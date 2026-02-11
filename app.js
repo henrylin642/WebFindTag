@@ -13,6 +13,8 @@ const params = {
   satMax: 0.35,
   highpassMix: 0.0,
   highpassGain: 1.0,
+  dogMix: 0.0,
+  dogGain: 1.0,
 };
 
 let gl;
@@ -240,6 +242,12 @@ function computeNmsPoints() {
 
   const w = nmsWidth;
   const h = nmsHeight;
+  const blurSmall = new Float32Array(total);
+  const blurLarge = new Float32Array(total);
+  if (params.dogMix > 0) {
+    boxBlur(brightness, blurSmall, w, h, 1);
+    boxBlur(brightness, blurLarge, w, h, 3);
+  }
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const idx = y * w + x;
@@ -254,9 +262,17 @@ function computeNmsPoints() {
         localAvg = sum / 9;
       }
       const highpass = Math.max(brightness[idx] - localAvg, 0) * params.highpassGain;
-      const brightMix = params.highpassMix > 0
-        ? brightness[idx] * (1 - params.highpassMix) + highpass * params.highpassMix
-        : brightness[idx];
+      const dog = params.dogMix > 0
+        ? Math.max(blurSmall[idx] - blurLarge[idx], 0) * params.dogGain
+        : 0;
+
+      let brightMix = brightness[idx];
+      if (params.highpassMix > 0) {
+        brightMix = brightMix * (1 - params.highpassMix) + highpass * params.highpassMix;
+      }
+      if (params.dogMix > 0) {
+        brightMix = brightMix * (1 - params.dogMix) + dog * params.dogMix;
+      }
 
       const brightnessGate = smoothstep(params.brightMin, params.brightMax, brightMix);
       const blueGate = smoothstep(params.blueMin, params.blueMax, blueDiff[idx]);
@@ -392,6 +408,8 @@ function initControls() {
     ['satMax', 'satMaxVal'],
     ['highpassMix', 'highpassMixVal'],
     ['highpassGain', 'highpassGainVal'],
+    ['dogMix', 'dogMixVal'],
+    ['dogGain', 'dogGainVal'],
   ];
 
   bindings.forEach(([id, valId]) => {
@@ -413,4 +431,41 @@ function initControls() {
 function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
+}
+
+function boxBlur(src, dst, w, h, radius) {
+  const size = radius * 2 + 1;
+  const tmp = new Float32Array(w * h);
+
+  for (let y = 0; y < h; y++) {
+    let sum = 0;
+    for (let x = -radius; x <= radius; x++) {
+      const xx = Math.min(w - 1, Math.max(0, x));
+      sum += src[y * w + xx];
+    }
+    for (let x = 0; x < w; x++) {
+      tmp[y * w + x] = sum / size;
+      const x0 = x - radius;
+      const x1 = x + radius + 1;
+      const v0 = src[y * w + Math.min(w - 1, Math.max(0, x0))];
+      const v1 = src[y * w + Math.min(w - 1, Math.max(0, x1))];
+      sum += v1 - v0;
+    }
+  }
+
+  for (let x = 0; x < w; x++) {
+    let sum = 0;
+    for (let y = -radius; y <= radius; y++) {
+      const yy = Math.min(h - 1, Math.max(0, y));
+      sum += tmp[yy * w + x];
+    }
+    for (let y = 0; y < h; y++) {
+      dst[y * w + x] = sum / size;
+      const y0 = y - radius;
+      const y1 = y + radius + 1;
+      const v0 = tmp[Math.min(h - 1, Math.max(0, y0)) * w + x];
+      const v1 = tmp[Math.min(h - 1, Math.max(0, y1)) * w + x];
+      sum += v1 - v0;
+    }
+  }
 }
