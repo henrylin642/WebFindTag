@@ -468,7 +468,10 @@ async function estimatePose(points) {
   await cvReady;
   if (!video.videoWidth || !video.videoHeight) return;
 
-  const candidates = points.slice(0, 8);
+  const candidates = points
+    .slice()
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 12);
   if (candidates.length < 5) {
     updateLock(false);
     scoreEl.textContent = 'Score: -';
@@ -530,8 +533,8 @@ function scoreRectangle(pts) {
   const ratio = w / h;
   const target = 124 / 86.6;
   const ratioErr = Math.abs(Math.log(ratio / target));
-  const score = Math.max(0, 1.0 - ratioErr * 2.0);
-  if (score < 0.3) return null;
+  const score = Math.max(0, 1.0 - ratioErr * 1.5);
+  if (score < 0.15) return null;
   return { center, ordered, score };
 }
 
@@ -542,9 +545,19 @@ function pickLed5(points, center) {
     const dy = center.y - p.y;
     if (dy < 0) continue;
     const dx = Math.abs(p.x - center.x);
-    const score = dy - dx * 0.5;
+    const score = dy - dx * 0.3;
     if (score > bestScore) {
       bestScore = score;
+      best = p;
+    }
+  }
+  if (best) return best;
+  // Fallback: pick farthest point from center.
+  let maxD = -1;
+  for (const p of points) {
+    const d = dist2(p, center);
+    if (d > maxD) {
+      maxD = d;
       best = p;
     }
   }
