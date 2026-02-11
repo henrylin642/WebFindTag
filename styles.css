@@ -94,3 +94,12 @@ html, body {
 .row input[type="range"] {
   width: 100%;
 }
+
+.row select {
+  width: 100%;
+  background: rgba(20, 28, 38, 0.9);
+  border: 1px solid rgba(74, 163, 255, 0.4);
+  color: var(--hud-text);
+  border-radius: 4px;
+  padding: 2px 4px;
+}

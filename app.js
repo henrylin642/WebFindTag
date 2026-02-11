@@ -29,6 +29,8 @@ let nmsCtx;
 let nmsWidth = 320;
 let nmsHeight = 180;
 let lastConstraintsApplied = false;
+let currentStream = null;
+let currentResolution = { width: 1920, height: 1080 };
 
 const nmsConfig = {
   threshold: 0.4,
@@ -374,12 +376,17 @@ async function startCamera() {
     audio: false,
     video: {
       facingMode: { ideal: 'environment' },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
+      width: { ideal: currentResolution.width },
+      height: { ideal: currentResolution.height },
     },
   };
 
+  if (currentStream) {
+    currentStream.getTracks().forEach((t) => t.stop());
+  }
+
   const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  currentStream = stream;
   video.srcObject = stream;
   applyVideoConstraints(stream);
   await video.play();
@@ -430,6 +437,24 @@ function initControls() {
     input.addEventListener('input', apply);
     apply();
   });
+
+  const resolutionSelect = document.getElementById('resolution');
+  const resolutionVal = document.getElementById('resolutionVal');
+  if (resolutionSelect && resolutionVal) {
+    const applyResolution = async () => {
+      const [w, h] = resolutionSelect.value.split('x').map((v) => Number.parseInt(v, 10));
+      if (Number.isFinite(w) && Number.isFinite(h)) {
+        currentResolution = { width: w, height: h };
+        resolutionVal.textContent = `${w}x${h}`;
+        lastConstraintsApplied = false;
+        await startCamera();
+      }
+    };
+    resolutionSelect.addEventListener('change', () => {
+      applyResolution().catch(() => {});
+    });
+    applyResolution().catch(() => {});
+  }
 }
 
 function smoothstep(edge0, edge1, x) {

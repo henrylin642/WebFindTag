@@ -19,6 +19,16 @@
       <div id="controls" class="panel">
         <div class="panel-title">Mask Params</div>
         <label class="row">
+          <span>resolution</span>
+          <select id="resolution">
+            <option value="1920x1080">1920x1080</option>
+            <option value="1280x720">1280x720</option>
+            <option value="960x540">960x540</option>
+            <option value="640x480">640x480</option>
+          </select>
+          <span id="resolutionVal">1920x1080</span>
+        </label>
+        <label class="row">
           <span>brightMin</span>
           <input id="brightMin" type="range" min="0" max="1" step="0.01" value="0.25" />
           <span id="brightMinVal">0.25</span>
