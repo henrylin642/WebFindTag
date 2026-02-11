@@ -93,7 +93,8 @@ void main() {
 
   float mask = brightnessGate * blueGate * satGate;
 
-  gl_FragColor = vec4(mask, blueDiff * 0.5 + 0.5, brightness, 1.0);
+  // Show raw camera feed to avoid colored mask overlay.
+  gl_FragColor = vec4(rgb, 1.0);
 }
 `;
 
