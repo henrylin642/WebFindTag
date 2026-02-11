@@ -45,6 +45,7 @@ let lastBeepTime = 0;
 let filteredPose = null;
 let viewRect = { x: 0, y: 0, w: 0, h: 0 };
 let prevPoints = [];
+let cropRect = { sx: 0, sy: 0, sw: 0, sh: 0 };
 
 const kalmanConfig = {
   alpha: 0.35,
@@ -94,6 +95,7 @@ precision mediump float;
 
 uniform sampler2D uTex;
 uniform vec2 uTexSize;
+uniform vec4 uSrcRect;
 uniform float uBrightMin;
 uniform float uBrightMax;
 uniform float uBlueMin;
@@ -106,7 +108,8 @@ uniform float uHighpassGain;
 varying vec2 vUv;
 
 void main() {
-  vec3 rgb = texture2D(uTex, vUv).rgb;
+  vec2 uv = uSrcRect.xy + vUv * uSrcRect.zw;
+  vec3 rgb = texture2D(uTex, uv).rgb;
   float brightness = max(max(rgb.r, rgb.g), rgb.b);
   float blueDiff = rgb.b - (rgb.r + rgb.g) * 0.5;
   float saturation = max(max(rgb.r, rgb.g), rgb.b) - min(min(rgb.r, rgb.g), rgb.b);
@@ -207,6 +210,7 @@ function initGL() {
 
   uniforms.uTex = gl.getUniformLocation(program, 'uTex');
   uniforms.uTexSize = gl.getUniformLocation(program, 'uTexSize');
+  uniforms.uSrcRect = gl.getUniformLocation(program, 'uSrcRect');
   uniforms.uBrightMin = gl.getUniformLocation(program, 'uBrightMin');
   uniforms.uBrightMax = gl.getUniformLocation(program, 'uBrightMax');
   uniforms.uBlueMin = gl.getUniformLocation(program, 'uBlueMin');
@@ -228,6 +232,13 @@ function updateUniforms() {
   gl.uniform1f(uniforms.uSatMax, params.satMax);
   gl.uniform1f(uniforms.uHighpassMix, params.highpassMix);
   gl.uniform1f(uniforms.uHighpassGain, params.highpassGain);
+  gl.uniform4f(
+    uniforms.uSrcRect,
+    cropRect.sx / video.videoWidth || 0,
+    cropRect.sy / video.videoHeight || 0,
+    cropRect.sw / video.videoWidth || 1,
+    cropRect.sh / video.videoHeight || 1
+  );
 }
 
 function resize() {
@@ -256,7 +267,9 @@ function setupNms() {
 function computeNmsPoints() {
   if (!video.videoWidth || !video.videoHeight) return [];
 
-  const aspect = video.videoWidth / video.videoHeight;
+  const aspect = cropRect.sw && cropRect.sh
+    ? cropRect.sw / cropRect.sh
+    : video.videoWidth / video.videoHeight;
   nmsWidth = 360;
   nmsHeight = Math.round(nmsWidth / aspect);
   if (nmsCanvas.width !== nmsWidth || nmsCanvas.height !== nmsHeight) {
@@ -264,7 +277,11 @@ function computeNmsPoints() {
     nmsCanvas.height = nmsHeight;
   }
 
-  nmsCtx.drawImage(video, 0, 0, nmsWidth, nmsHeight);
+  const sx = cropRect.sx || 0;
+  const sy = cropRect.sy || 0;
+  const sw = cropRect.sw || video.videoWidth;
+  const sh = cropRect.sh || video.videoHeight;
+  nmsCtx.drawImage(video, sx, sy, sw, sh, 0, 0, nmsWidth, nmsHeight);
   const img = nmsCtx.getImageData(0, 0, nmsWidth, nmsHeight);
   const data = img.data;
   const total = nmsWidth * nmsHeight;
@@ -567,8 +584,8 @@ function pickLed5(points, center) {
 
 function solvePnP(imagePoints) {
   if (imagePoints.length !== 5) return null;
-  const w = video.videoWidth;
-  const h = video.videoHeight;
+  const w = cropRect.sw || video.videoWidth;
+  const h = cropRect.sh || video.videoHeight;
   const fx = 0.9 * Math.max(w, h);
   const fy = fx;
   const cx = w / 2;
@@ -576,8 +593,8 @@ function solvePnP(imagePoints) {
 
   const obj = cv.matFromArray(5, 3, cv.CV_64F, objectPoints.flat());
   const img = cv.matFromArray(5, 2, cv.CV_64F, imagePoints.flatMap((p) => [
-    p.x * (w / nmsWidth),
-    p.y * (h / nmsHeight),
+    cropRect.sx + p.x * (w / nmsWidth),
+    cropRect.sy + p.y * (h / nmsHeight),
   ]));
   const cam = cv.matFromArray(3, 3, cv.CV_64F, [
     fx, 0, cx,
@@ -662,21 +679,21 @@ function updateLock(locked) {
   lastLock = locked;
 }
 
-function computeViewRect(srcW, srcH, dstW, dstH) {
+function computeCropRect(srcW, srcH, dstW, dstH) {
   const srcAspect = srcW / srcH;
   const dstAspect = dstW / dstH;
-  let w;
-  let h;
-  if (dstAspect > srcAspect) {
-    h = dstH;
-    w = h * srcAspect;
-  } else {
-    w = dstW;
-    h = w / srcAspect;
+  let sw = srcW;
+  let sh = srcH;
+  let sx = 0;
+  let sy = 0;
+  if (srcAspect > dstAspect) {
+    sw = Math.round(srcH * dstAspect);
+    sx = Math.round((srcW - sw) / 2);
+  } else if (srcAspect < dstAspect) {
+    sh = Math.round(srcW / dstAspect);
+    sy = Math.round((srcH - sh) / 2);
   }
-  const x = (dstW - w) / 2;
-  const y = (dstH - h) / 2;
-  return { x, y, w, h };
+  return { sx, sy, sw, sh };
 }
 
 function applyKalman(pose) {
@@ -771,7 +788,8 @@ function render() {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
     if (video.videoWidth && video.videoHeight) {
       gl.uniform2f(uniforms.uTexSize, video.videoWidth, video.videoHeight);
-      viewRect = computeViewRect(video.videoWidth, video.videoHeight, overlay.width, overlay.height);
+      cropRect = computeCropRect(video.videoWidth, video.videoHeight, overlay.width, overlay.height);
+      viewRect = { x: 0, y: 0, w: overlay.width, h: overlay.height };
     }
     updateUniforms();
     gl.drawArrays(gl.TRIANGLES, 0, 6);
