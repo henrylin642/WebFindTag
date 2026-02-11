@@ -4,8 +4,6 @@ const overlay = document.getElementById('overlay');
 const statusEl = document.getElementById('status');
 const pointsEl = document.getElementById('points');
 const sharpnessEl = document.getElementById('sharpness');
-const camCapsEl = document.getElementById('camCaps');
-const camSettingsEl = document.getElementById('camSettings');
 
 const params = {
   brightMin: 0.25,
@@ -747,11 +745,5 @@ function updateCameraInfo(stream) {
     };
   }
 
-  const focus = caps.focusMode ? caps.focusMode.join(',') : 'n/a';
-  const exposure = caps.exposureMode ? caps.exposureMode.join(',') : 'n/a';
-  const wb = caps.whiteBalanceMode ? caps.whiteBalanceMode.join(',') : 'n/a';
-  const torch = caps.torch ? 'yes' : 'no';
-
-  camCapsEl.textContent = `caps: focus=${focus} exposure=${exposure} wb=${wb} torch=${torch}`;
-  camSettingsEl.textContent = `settings: ${JSON.stringify(settings)}`;
+  void settings;
 }
