@@ -547,8 +547,9 @@ async function estimatePose(points) {
   }
   pnpEl.textContent = `PnP: ok err=${pose.error.toFixed(2)}`;
   const smooth = applyKalman(pose);
+  const cam = smooth.camInObj.map((v) => v / 1000);
   poseEl.textContent =
-    `Pose: x=${smooth.tvec[0].toFixed(1)} y=${smooth.tvec[1].toFixed(1)} z=${smooth.tvec[2].toFixed(1)}mm ` +
+    `Pose: x=${cam[0].toFixed(2)} y=${cam[1].toFixed(2)} z=${cam[2].toFixed(2)}m ` +
     `r=${smooth.euler[0].toFixed(1)} p=${smooth.euler[1].toFixed(1)} y=${smooth.euler[2].toFixed(1)} err=${pose.error.toFixed(2)}`;
 }
 
@@ -760,11 +761,24 @@ function solvePnP(imagePoints) {
 
   const r = rvec.data64F;
   const t = tvec.data64F;
-  const euler = rvecToEuler(r[0], r[1], r[2]);
+  const R = rvecToMat(r[0], r[1], r[2]);
+  const camInObj = [
+    -(R[0] * t[0] + R[3] * t[1] + R[6] * t[2]),
+    -(R[1] * t[0] + R[4] * t[1] + R[7] * t[2]),
+    -(R[2] * t[0] + R[5] * t[1] + R[8] * t[2]),
+  ];
+  const euler = matToEuler(R);
 
   obj.delete(); img.delete(); cam.delete(); dist.delete(); proj.delete(); rvec.delete(); tvec.delete();
   const score = 1 / (1 + err);
-  return { error: err, score, rvec: [r[0], r[1], r[2]], tvec: [t[0], t[1], t[2]], euler };
+  return {
+    error: err,
+    score,
+    rvec: [r[0], r[1], r[2]],
+    tvec: [t[0], t[1], t[2]],
+    euler,
+    camInObj,
+  };
 }
 
 function solvePnPBest(rectPoints, led5) {
@@ -781,7 +795,7 @@ function solvePnPBest(rectPoints, led5) {
   return best;
 }
 
-function rvecToEuler(rx, ry, rz) {
+function rvecToMat(rx, ry, rz) {
   const theta = Math.sqrt(rx * rx + ry * ry + rz * rz) || 1e-6;
   const kx = rx / theta;
   const ky = ry / theta;
@@ -800,6 +814,21 @@ function rvecToEuler(rx, ry, rz) {
   const r21 = kz * ky * v + kx * s;
   const r22 = kz * kz * v + c;
 
+  return [r00, r01, r02, r10, r11, r12, r20, r21, r22];
+}
+
+function radToDeg(v) {
+  return v * 180 / Math.PI;
+}
+
+function matToEuler(R) {
+  const r00 = R[0];
+  const r10 = R[3];
+  const r20 = R[6];
+  const r21 = R[7];
+  const r22 = R[8];
+  const r12 = R[5];
+  const r11 = R[4];
   const sy = Math.sqrt(r00 * r00 + r10 * r10);
   let roll, pitch, yaw;
   if (sy > 1e-6) {
@@ -812,10 +841,6 @@ function rvecToEuler(rx, ry, rz) {
     yaw = 0;
   }
   return [radToDeg(roll), radToDeg(pitch), radToDeg(yaw)];
-}
-
-function radToDeg(v) {
-  return v * 180 / Math.PI;
 }
 
 function updateLock(locked) {
@@ -848,6 +873,7 @@ function applyKalman(pose) {
     filteredPose = {
       tvec: pose.tvec.slice(),
       euler: pose.euler.slice(),
+      camInObj: pose.camInObj ? pose.camInObj.slice() : pose.tvec.slice(),
     };
     return filteredPose;
   }
@@ -855,6 +881,9 @@ function applyKalman(pose) {
   for (let i = 0; i < 3; i++) {
     filteredPose.tvec[i] = filteredPose.tvec[i] * (1 - a) + pose.tvec[i] * a;
     filteredPose.euler[i] = filteredPose.euler[i] * (1 - a) + pose.euler[i] * a;
+    if (pose.camInObj) {
+      filteredPose.camInObj[i] = filteredPose.camInObj[i] * (1 - a) + pose.camInObj[i] * a;
+    }
   }
   return filteredPose;
 }
