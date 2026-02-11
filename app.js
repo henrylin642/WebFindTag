@@ -544,9 +544,13 @@ function findBestPose(points) {
   let bestRect = null;
   debugRect = null;
   debugLed5 = null;
+  rectEl.textContent = 'Rect: -';
 
   for (const quad of combos) {
     const rect = scoreRectangle(quad);
+    if (rect && (!bestRect || rect.score > bestRect.rect.score)) {
+      bestRect = { rect, led5: null };
+    }
     if (!rect) continue;
     const led5 = pickLed5(points, rect.center);
     if (!led5) continue;
@@ -559,8 +563,7 @@ function findBestPose(points) {
       pose.score += rect.score;
       if (!best || pose.error < best.error) best = pose;
     }
-
-    if (!bestRect || rect.score > bestRect.score) {
+    if (!bestRect || rect.score > bestRect.rect.score) {
       bestRect = { rect, led5 };
     }
   }
@@ -570,10 +573,14 @@ function findBestPose(points) {
       x: viewRect.x + p.x * (viewRect.w / nmsWidth),
       y: viewRect.y + p.y * (viewRect.h / nmsHeight),
     }));
-    debugLed5 = {
-      x: viewRect.x + bestRect.led5.x * (viewRect.w / nmsWidth),
-      y: viewRect.y + bestRect.led5.y * (viewRect.h / nmsHeight),
-    };
+    if (bestRect.led5) {
+      debugLed5 = {
+        x: viewRect.x + bestRect.led5.x * (viewRect.w / nmsWidth),
+        y: viewRect.y + bestRect.led5.y * (viewRect.h / nmsHeight),
+      };
+    } else {
+      debugLed5 = null;
+    }
     const ratio = bestRect.rect.ratio;
     rectEl.textContent = `Rect: ${bestRect.rect.score.toFixed(2)} w/h=${ratio.toFixed(2)}`;
   } else {
