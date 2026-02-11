@@ -13,6 +13,39 @@
         <div>Blue Mask</div>
         <div id="status">Initializing…</div>
       </div>
+      <div id="controls" class="panel">
+        <div class="panel-title">Mask Params</div>
+        <label class="row">
+          <span>brightMin</span>
+          <input id="brightMin" type="range" min="0" max="1" step="0.01" value="0.25" />
+          <span id="brightMinVal">0.25</span>
+        </label>
+        <label class="row">
+          <span>brightMax</span>
+          <input id="brightMax" type="range" min="0" max="1" step="0.01" value="0.75" />
+          <span id="brightMaxVal">0.75</span>
+        </label>
+        <label class="row">
+          <span>blueMin</span>
+          <input id="blueMin" type="range" min="-0.2" max="0.4" step="0.01" value="0.05" />
+          <span id="blueMinVal">0.05</span>
+        </label>
+        <label class="row">
+          <span>blueMax</span>
+          <input id="blueMax" type="range" min="0" max="0.6" step="0.01" value="0.25" />
+          <span id="blueMaxVal">0.25</span>
+        </label>
+        <label class="row">
+          <span>satMin</span>
+          <input id="satMin" type="range" min="0" max="0.6" step="0.01" value="0.05" />
+          <span id="satMinVal">0.05</span>
+        </label>
+        <label class="row">
+          <span>satMax</span>
+          <input id="satMax" type="range" min="0" max="0.9" step="0.01" value="0.35" />
+          <span id="satMaxVal">0.35</span>
+        </label>
+      </div>
     </main>
     <video id="video" playsinline muted></video>
     <script src="app.js"></script>

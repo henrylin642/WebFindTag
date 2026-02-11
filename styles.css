@@ -54,3 +54,34 @@ html, body {
 #status {
   color: var(--accent);
 }
+
+.panel {
+  position: fixed;
+  right: 12px;
+  top: 12px;
+  width: min(320px, 92vw);
+  padding: 10px 12px;
+  border: 1px solid rgba(74, 163, 255, 0.25);
+  background: var(--hud-bg);
+  backdrop-filter: blur(6px);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.panel-title {
+  font-size: 12px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 70px 1fr 44px;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0;
+}
+
+.row input[type="range"] {
+  width: 100%;
+}

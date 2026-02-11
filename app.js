@@ -184,6 +184,7 @@ async function main() {
     initGL();
     resize();
     window.addEventListener('resize', resize);
+    initControls();
     await startCamera();
     statusEl.textContent = 'Running';
     render();
@@ -193,3 +194,29 @@ async function main() {
 }
 
 main();
+
+function initControls() {
+  const bindings = [
+    ['brightMin', 'brightMinVal'],
+    ['brightMax', 'brightMaxVal'],
+    ['blueMin', 'blueMinVal'],
+    ['blueMax', 'blueMaxVal'],
+    ['satMin', 'satMinVal'],
+    ['satMax', 'satMaxVal'],
+  ];
+
+  bindings.forEach(([id, valId]) => {
+    const input = document.getElementById(id);
+    const label = document.getElementById(valId);
+    if (!input || !label) return;
+
+    const apply = () => {
+      const value = Number.parseFloat(input.value);
+      params[id] = Number.isFinite(value) ? value : params[id];
+      label.textContent = params[id].toFixed(2);
+    };
+
+    input.addEventListener('input', apply);
+    apply();
+  });
+}
