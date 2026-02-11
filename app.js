@@ -35,6 +35,7 @@ let currentStream = null;
 let currentResolution = { width: 1920, height: 1080 };
 let isRestarting = false;
 let focusCaps = { min: 0, max: 1 };
+let lastInfoTime = 0;
 
 const nmsConfig = {
   threshold: 0.4,
@@ -364,6 +365,11 @@ function render() {
     const result = computeNmsPoints();
     drawOverlay(result.points);
     sharpnessEl.textContent = `Sharpness: ${result.sharpness.toFixed(3)}`;
+    const now = performance.now();
+    if (currentStream && now - lastInfoTime > 1000) {
+      updateCameraInfo(currentStream);
+      lastInfoTime = now;
+    }
   }
   requestAnimationFrame(render);
 }
@@ -511,7 +517,12 @@ function initControls() {
         advanced.push({ focusMode: 'continuous' });
       }
 
-      track.applyConstraints({ advanced }).catch(() => {});
+      track.applyConstraints({ advanced }).then(() => {
+        updateCameraInfo(currentStream);
+      }).catch(() => {});
+
+      localStorage.setItem('focusMode', mode);
+      localStorage.setItem('focusDistance', String(dist));
     };
 
     const updateRange = () => {
@@ -528,6 +539,16 @@ function initControls() {
     focusDistInput.addEventListener('input', applyFocus);
 
     updateRange();
+    const savedMode = localStorage.getItem('focusMode');
+    const savedDist = localStorage.getItem('focusDistance');
+    if (savedMode) {
+      focusModeSel.value = savedMode;
+      focusModeVal.textContent = savedMode;
+    }
+    if (savedDist) {
+      focusDistInput.value = savedDist;
+      focusDistVal.textContent = Number.parseFloat(savedDist).toFixed(3);
+    }
   }
 }
 
