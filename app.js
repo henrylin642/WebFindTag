@@ -44,6 +44,7 @@ let lastLock = false;
 let lastBeepTime = 0;
 let filteredPose = null;
 let viewRect = { x: 0, y: 0, w: 0, h: 0 };
+let prevPoints = [];
 
 const kalmanConfig = {
   alpha: 0.35,
@@ -322,7 +323,9 @@ function computeNmsPoints() {
       const brightnessGate = smoothstep(params.brightMin, params.brightMax, brightMix);
       const blueGate = smoothstep(params.blueMin, params.blueMax, blueDiff[idx]);
       const satGate = smoothstep(params.satMin, params.satMax, saturation[idx]);
-      mask[idx] = brightnessGate * blueGate * satGate;
+      const base = brightnessGate * blueGate * satGate;
+      const linePenalty = computeLinePenalty(brightness, w, h, x, y);
+      mask[idx] = base * linePenalty;
     }
   }
 
@@ -363,7 +366,8 @@ function computeNmsPoints() {
     if (points.length >= nmsConfig.maxPoints) break;
   }
 
-  return { points, sharpness: computeSharpness(brightness, w, h) };
+  const stable = stabilizePoints(points);
+  return { points: stable, sharpness: computeSharpness(brightness, w, h) };
 }
 
 function drawOverlay(points) {
@@ -1081,6 +1085,60 @@ function computeSharpness(src, w, h) {
     }
   }
   return count > 0 ? sum / count : 0;
+}
+
+function computeLinePenalty(brightness, w, h, x, y) {
+  // Penalize points that look like part of a long horizontal strip.
+  const idx = y * w + x;
+  const v = brightness[idx];
+  if (v < 0.2) return 1.0;
+
+  let left = 0;
+  let right = 0;
+  for (let i = 1; i <= 12; i++) {
+    if (x - i < 0) break;
+    if (brightness[idx - i] < v * 0.5) break;
+    left++;
+  }
+  for (let i = 1; i <= 12; i++) {
+    if (x + i >= w) break;
+    if (brightness[idx + i] < v * 0.5) break;
+    right++;
+  }
+  const run = left + right + 1;
+  if (run >= 8) return 0.35;
+  if (run >= 5) return 0.6;
+  return 1.0;
+}
+
+function stabilizePoints(points) {
+  if (prevPoints.length === 0) {
+    prevPoints = points;
+    return points;
+  }
+  const matched = [];
+  for (const p of points) {
+    let best = null;
+    let bestD = 9;
+    for (const q of prevPoints) {
+      const d = dist2(p, q);
+      if (d < bestD) {
+        bestD = d;
+        best = q;
+      }
+    }
+    if (best) {
+      matched.push({
+        x: p.x * 0.6 + best.x * 0.4,
+        y: p.y * 0.6 + best.y * 0.4,
+        score: p.score,
+      });
+    } else {
+      matched.push(p);
+    }
+  }
+  prevPoints = matched;
+  return matched;
 }
 
 function applyVideoConstraints(stream) {
