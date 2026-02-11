@@ -493,44 +493,62 @@ async function estimatePose(points) {
 }
 
 function findBestPose(points) {
-  const combos = combinations(points, 5);
+  const combos = combinations(points, 4);
   let best = null;
 
-  for (const combo of combos) {
-    const centroid = meanPoint(combo);
-    let maxDist = -1;
-    let led5 = combo[0];
-    for (const p of combo) {
-      const d = dist2(p, centroid);
-      if (d > maxDist) {
-        maxDist = d;
-        led5 = p;
-      }
-    }
-    const rectPts = combo.filter((p) => p !== led5);
-    if (rectPts.length !== 4) continue;
+  for (const quad of combos) {
+    const rect = scoreRectangle(quad);
+    if (!rect) continue;
+    const led5 = pickLed5(points, rect.center);
+    if (!led5) continue;
 
-    const ordered = sortByAngle(rectPts, centroid);
-    const perms = rectanglePermutations(ordered);
-
+    const perms = rectanglePermutations(rect.ordered);
     for (const perm of perms) {
-      const imgPts = [
-        perm[0],
-        perm[1],
-        perm[2],
-        perm[3],
-        led5,
-      ];
+      const imgPts = [perm[0], perm[1], perm[2], perm[3], led5];
       const pose = solvePnP(imgPts);
       if (!pose) continue;
-      if (!best || pose.error < best.error) {
-        best = pose;
-      }
+      pose.score += rect.score;
+      if (!best || pose.error < best.error) best = pose;
     }
   }
 
   if (best && best.error < 20) return best;
   return null;
+}
+
+function scoreRectangle(pts) {
+  if (pts.length !== 4) return null;
+  const center = meanPoint(pts);
+  const ordered = sortByAngle(pts, center);
+  const d01 = Math.sqrt(dist2(ordered[0], ordered[1]));
+  const d12 = Math.sqrt(dist2(ordered[1], ordered[2]));
+  const d23 = Math.sqrt(dist2(ordered[2], ordered[3]));
+  const d30 = Math.sqrt(dist2(ordered[3], ordered[0]));
+  const w = (d01 + d23) * 0.5;
+  const h = (d12 + d30) * 0.5;
+  if (w < 2 || h < 2) return null;
+  const ratio = w / h;
+  const target = 124 / 86.6;
+  const ratioErr = Math.abs(Math.log(ratio / target));
+  const score = Math.max(0, 1.0 - ratioErr * 2.0);
+  if (score < 0.3) return null;
+  return { center, ordered, score };
+}
+
+function pickLed5(points, center) {
+  let best = null;
+  let bestScore = -1;
+  for (const p of points) {
+    const dy = center.y - p.y;
+    if (dy < 0) continue;
+    const dx = Math.abs(p.x - center.x);
+    const score = dy - dx * 0.5;
+    if (score > bestScore) {
+      bestScore = score;
+      best = p;
+    }
+  }
+  return best;
 }
 
 function solvePnP(imagePoints) {
