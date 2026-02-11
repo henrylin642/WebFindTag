@@ -5,6 +5,7 @@ const statusEl = document.getElementById('status');
 const pointsEl = document.getElementById('points');
 const sharpnessEl = document.getElementById('sharpness');
 const lockEl = document.getElementById('lock');
+const scoreEl = document.getElementById('score');
 const poseEl = document.getElementById('pose');
 
 const params = {
@@ -41,6 +42,11 @@ let isoCaps = { min: 50, max: 800 };
 let expCompCaps = { min: -2, max: 2 };
 let lastLock = false;
 let lastBeepTime = 0;
+let filteredPose = null;
+
+const kalmanConfig = {
+  alpha: 0.35,
+};
 
 const cvReady = new Promise((resolve) => {
   if (typeof cv !== 'undefined' && cv.Mat) {
@@ -388,6 +394,7 @@ async function estimatePose(points) {
   const candidates = points.slice(0, 8);
   if (candidates.length < 5) {
     updateLock(false);
+    scoreEl.textContent = 'Score: -';
     poseEl.textContent = 'Pose: -';
     return;
   }
@@ -395,15 +402,17 @@ async function estimatePose(points) {
   const best = findBestPose(candidates);
   if (!best) {
     updateLock(false);
+    scoreEl.textContent = 'Score: -';
     poseEl.textContent = 'Pose: -';
     return;
   }
 
   updateLock(true);
+  scoreEl.textContent = `Score: ${best.score.toFixed(3)} err=${best.error.toFixed(2)}`;
+  const smooth = applyKalman(best);
   poseEl.textContent =
-    `Pose: x=${best.tvec[0].toFixed(1)} y=${best.tvec[1].toFixed(1)} z=${best.tvec[2].toFixed(1)}mm ` +
-    `r=${best.euler[0].toFixed(1)} p=${best.euler[1].toFixed(1)} y=${best.euler[2].toFixed(1)} ` +
-    `err=${best.error.toFixed(2)}`;
+    `Pose: x=${smooth.tvec[0].toFixed(1)} y=${smooth.tvec[1].toFixed(1)} z=${smooth.tvec[2].toFixed(1)}mm ` +
+    `r=${smooth.euler[0].toFixed(1)} p=${smooth.euler[1].toFixed(1)} y=${smooth.euler[2].toFixed(1)}`;
 }
 
 function findBestPose(points) {
@@ -443,7 +452,7 @@ function findBestPose(points) {
     }
   }
 
-  if (best && best.error < 8) return best;
+  if (best && best.error < 12) return best;
   return null;
 }
 
@@ -495,7 +504,8 @@ function solvePnP(imagePoints) {
   const euler = rvecToEuler(r[0], r[1], r[2]);
 
   obj.delete(); img.delete(); cam.delete(); dist.delete(); proj.delete(); rvec.delete(); tvec.delete();
-  return { error: err, rvec: [r[0], r[1], r[2]], tvec: [t[0], t[1], t[2]], euler };
+  const score = 1 / (1 + err);
+  return { error: err, score, rvec: [r[0], r[1], r[2]], tvec: [t[0], t[1], t[2]], euler };
 }
 
 function rvecToEuler(rx, ry, rz) {
@@ -541,6 +551,22 @@ function updateLock(locked) {
     beep();
   }
   lastLock = locked;
+}
+
+function applyKalman(pose) {
+  if (!filteredPose) {
+    filteredPose = {
+      tvec: pose.tvec.slice(),
+      euler: pose.euler.slice(),
+    };
+    return filteredPose;
+  }
+  const a = kalmanConfig.alpha;
+  for (let i = 0; i < 3; i++) {
+    filteredPose.tvec[i] = filteredPose.tvec[i] * (1 - a) + pose.tvec[i] * a;
+    filteredPose.euler[i] = filteredPose.euler[i] * (1 - a) + pose.euler[i] * a;
+  }
+  return filteredPose;
 }
 
 function beep() {
