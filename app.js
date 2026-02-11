@@ -6,6 +6,7 @@ const pointsEl = document.getElementById('points');
 const sharpnessEl = document.getElementById('sharpness');
 const lockEl = document.getElementById('lock');
 const scoreEl = document.getElementById('score');
+const rectEl = document.getElementById('rect');
 const poseEl = document.getElementById('pose');
 
 const params = {
@@ -540,6 +541,7 @@ async function estimatePose(points) {
 function findBestPose(points) {
   const combos = combinations(points, 4);
   let best = null;
+  let bestRect = null;
   debugRect = null;
   debugLed5 = null;
 
@@ -558,16 +560,23 @@ function findBestPose(points) {
       if (!best || pose.error < best.error) best = pose;
     }
 
-    if (!debugRect || rect.score > 0.5) {
-      debugRect = rect.ordered.map((p) => ({
-        x: viewRect.x + p.x * (viewRect.w / nmsWidth),
-        y: viewRect.y + p.y * (viewRect.h / nmsHeight),
-      }));
-      debugLed5 = {
-        x: viewRect.x + led5.x * (viewRect.w / nmsWidth),
-        y: viewRect.y + led5.y * (viewRect.h / nmsHeight),
-      };
+    if (!bestRect || rect.score > bestRect.score) {
+      bestRect = { rect, led5 };
     }
+  }
+
+  if (bestRect) {
+    debugRect = bestRect.rect.ordered.map((p) => ({
+      x: viewRect.x + p.x * (viewRect.w / nmsWidth),
+      y: viewRect.y + p.y * (viewRect.h / nmsHeight),
+    }));
+    debugLed5 = {
+      x: viewRect.x + bestRect.led5.x * (viewRect.w / nmsWidth),
+      y: viewRect.y + bestRect.led5.y * (viewRect.h / nmsHeight),
+    };
+    rectEl.textContent = `Rect: ${bestRect.rect.score.toFixed(2)}`;
+  } else {
+    rectEl.textContent = 'Rect: -';
   }
 
   if (best && best.error < 20) return best;
@@ -589,7 +598,7 @@ function scoreRectangle(pts) {
   const target = 124 / 86.6;
   const ratioErr = Math.abs(Math.log(ratio / target));
   const score = Math.max(0, 1.0 - ratioErr * 1.5);
-  if (score < 0.15) return null;
+  if (score < 0.05) return null;
   return { center, ordered, score };
 }
 
