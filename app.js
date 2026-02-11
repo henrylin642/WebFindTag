@@ -546,6 +546,17 @@ function findBestPose(points) {
   debugLed5 = null;
   rectEl.textContent = 'Rect: -';
 
+  // If we only have 4 points, show their convex order as a rectangle candidate.
+  if (points.length === 4) {
+    const center = meanPoint(points);
+    const ordered = sortByAngle(points, center);
+    debugRect = ordered.map((p) => ({
+      x: viewRect.x + p.x * (viewRect.w / nmsWidth),
+      y: viewRect.y + p.y * (viewRect.h / nmsHeight),
+    }));
+    rectEl.textContent = 'Rect: raw';
+  }
+
   for (const quad of combos) {
     const rect = scoreRectangle(quad);
     if (rect && (!bestRect || rect.score > bestRect.rect.score)) {
