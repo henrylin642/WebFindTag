@@ -46,6 +46,8 @@ let filteredPose = null;
 let viewRect = { x: 0, y: 0, w: 0, h: 0 };
 let prevPoints = [];
 let cropRect = { sx: 0, sy: 0, sw: 0, sh: 0 };
+let debugRect = null;
+let debugLed5 = null;
 
 const kalmanConfig = {
   alpha: 0.35,
@@ -410,6 +412,7 @@ function drawOverlay(points) {
   }
   pointsEl.textContent = `Points: ${points.length}`;
   drawRoiCircle();
+  drawDebugSelection();
   drawReferenceShape();
 }
 
@@ -469,6 +472,27 @@ function drawReferenceShape() {
   overlayCtx.restore();
 }
 
+function drawDebugSelection() {
+  if (!debugRect) return;
+  overlayCtx.save();
+  overlayCtx.strokeStyle = 'rgba(255, 80, 80, 0.9)';
+  overlayCtx.lineWidth = 2;
+  overlayCtx.beginPath();
+  overlayCtx.moveTo(debugRect[0].x, debugRect[0].y);
+  for (let i = 1; i < debugRect.length; i++) {
+    overlayCtx.lineTo(debugRect[i].x, debugRect[i].y);
+  }
+  overlayCtx.closePath();
+  overlayCtx.stroke();
+  if (debugLed5) {
+    overlayCtx.fillStyle = 'rgba(255, 80, 80, 0.9)';
+    overlayCtx.beginPath();
+    overlayCtx.arc(debugLed5.x, debugLed5.y, 5, 0, Math.PI * 2);
+    overlayCtx.fill();
+  }
+  overlayCtx.restore();
+}
+
 function drawRoiCircle() {
   const radius = overlay.width * 0.25;
   const cx = overlay.width / 2;
@@ -516,6 +540,8 @@ async function estimatePose(points) {
 function findBestPose(points) {
   const combos = combinations(points, 4);
   let best = null;
+  debugRect = null;
+  debugLed5 = null;
 
   for (const quad of combos) {
     const rect = scoreRectangle(quad);
@@ -530,6 +556,17 @@ function findBestPose(points) {
       if (!pose) continue;
       pose.score += rect.score;
       if (!best || pose.error < best.error) best = pose;
+    }
+
+    if (!debugRect || rect.score > 0.5) {
+      debugRect = rect.ordered.map((p) => ({
+        x: viewRect.x + p.x * (viewRect.w / nmsWidth),
+        y: viewRect.y + p.y * (viewRect.h / nmsHeight),
+      }));
+      debugLed5 = {
+        x: viewRect.x + led5.x * (viewRect.w / nmsWidth),
+        y: viewRect.y + led5.y * (viewRect.h / nmsHeight),
+      };
     }
   }
 
