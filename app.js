@@ -388,7 +388,8 @@ function computeNmsPoints() {
 
   const stable = stabilizePoints(points);
   const deduped = dedupePoints(stable, 6);
-  return { points: deduped, sharpness: computeSharpness(brightness, w, h) };
+  const circled = filterCircle(deduped);
+  return { points: circled, sharpness: computeSharpness(brightness, w, h) };
 }
 
 function drawOverlay(points) {
@@ -1271,6 +1272,21 @@ function dedupePoints(points, minDist) {
     if (keep) result.push(p);
   }
   return result;
+}
+
+function filterCircle(points) {
+  if (!overlay.width || !overlay.height) return points;
+  const sx = viewRect.w / nmsWidth;
+  const sy = viewRect.h / nmsHeight;
+  const cx = (overlay.width * 0.5 - viewRect.x) / sx;
+  const cy = (overlay.height * 0.25 - viewRect.y) / sy;
+  const r = (overlay.width * 0.25) / sx;
+  const r2 = r * r;
+  return points.filter((p) => {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    return dx * dx + dy * dy <= r2;
+  });
 }
 
 function applyVideoConstraints(stream) {
