@@ -4,6 +4,8 @@ const overlay = document.getElementById('overlay');
 const statusEl = document.getElementById('status');
 const pointsEl = document.getElementById('points');
 const sharpnessEl = document.getElementById('sharpness');
+const lockEl = document.getElementById('lock');
+const poseEl = document.getElementById('pose');
 
 const params = {
   brightMin: 0.25,
@@ -37,12 +39,37 @@ let lastInfoTime = 0;
 let exposureCaps = { min: 1, max: 33 };
 let isoCaps = { min: 50, max: 800 };
 let expCompCaps = { min: -2, max: 2 };
+let lastLock = false;
+let lastBeepTime = 0;
+
+const cvReady = new Promise((resolve) => {
+  if (typeof cv !== 'undefined' && cv.Mat) {
+    resolve();
+    return;
+  }
+  const check = () => {
+    if (typeof cv !== 'undefined' && cv.Mat) {
+      resolve();
+    } else {
+      setTimeout(check, 50);
+    }
+  };
+  check();
+});
 
 const nmsConfig = {
   threshold: 0.4,
   radius: 3,
   maxPoints: 20,
 };
+
+const objectPoints = [
+  [62, 43.3, 0],    // LED1
+  [62, -43.3, 0],   // LED2
+  [-62, -43.3, 0],  // LED3
+  [-62, 43.3, 0],   // LED4
+  [0, 151.6, 40],   // LED5
+];
 
 const vertSrc = `
 attribute vec2 aPos;
@@ -354,6 +381,238 @@ function drawOverlay(points) {
   pointsEl.textContent = `Points: ${points.length}`;
 }
 
+async function estimatePose(points) {
+  await cvReady;
+  if (!video.videoWidth || !video.videoHeight) return;
+
+  const candidates = points.slice(0, 8);
+  if (candidates.length < 5) {
+    updateLock(false);
+    poseEl.textContent = 'Pose: -';
+    return;
+  }
+
+  const best = findBestPose(candidates);
+  if (!best) {
+    updateLock(false);
+    poseEl.textContent = 'Pose: -';
+    return;
+  }
+
+  updateLock(true);
+  poseEl.textContent =
+    `Pose: x=${best.tvec[0].toFixed(1)} y=${best.tvec[1].toFixed(1)} z=${best.tvec[2].toFixed(1)}mm ` +
+    `r=${best.euler[0].toFixed(1)} p=${best.euler[1].toFixed(1)} y=${best.euler[2].toFixed(1)} ` +
+    `err=${best.error.toFixed(2)}`;
+}
+
+function findBestPose(points) {
+  const combos = combinations(points, 5);
+  let best = null;
+
+  for (const combo of combos) {
+    const centroid = meanPoint(combo);
+    let maxDist = -1;
+    let led5 = combo[0];
+    for (const p of combo) {
+      const d = dist2(p, centroid);
+      if (d > maxDist) {
+        maxDist = d;
+        led5 = p;
+      }
+    }
+    const rectPts = combo.filter((p) => p !== led5);
+    if (rectPts.length !== 4) continue;
+
+    const ordered = sortByAngle(rectPts, centroid);
+    const perms = rectanglePermutations(ordered);
+
+    for (const perm of perms) {
+      const imgPts = [
+        perm[0],
+        perm[1],
+        perm[2],
+        perm[3],
+        led5,
+      ];
+      const pose = solvePnP(imgPts);
+      if (!pose) continue;
+      if (!best || pose.error < best.error) {
+        best = pose;
+      }
+    }
+  }
+
+  if (best && best.error < 8) return best;
+  return null;
+}
+
+function solvePnP(imagePoints) {
+  if (imagePoints.length !== 5) return null;
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  const fx = 0.9 * Math.max(w, h);
+  const fy = fx;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  const obj = cv.matFromArray(5, 3, cv.CV_64F, objectPoints.flat());
+  const img = cv.matFromArray(5, 2, cv.CV_64F, imagePoints.flatMap((p) => [
+    p.x * (w / nmsWidth),
+    p.y * (h / nmsHeight),
+  ]));
+  const cam = cv.matFromArray(3, 3, cv.CV_64F, [
+    fx, 0, cx,
+    0, fy, cy,
+    0, 0, 1,
+  ]);
+  const dist = cv.Mat.zeros(4, 1, cv.CV_64F);
+  const rvec = new cv.Mat();
+  const tvec = new cv.Mat();
+
+  const ok = cv.solvePnP(obj, img, cam, dist, rvec, tvec, false, cv.SOLVEPNP_ITERATIVE);
+  if (!ok) {
+    obj.delete(); img.delete(); cam.delete(); dist.delete(); rvec.delete(); tvec.delete();
+    return null;
+  }
+
+  const proj = new cv.Mat();
+  cv.projectPoints(obj, rvec, tvec, cam, dist, proj);
+  let err = 0;
+  for (let i = 0; i < 5; i++) {
+    const px = proj.data64F[i * 2];
+    const py = proj.data64F[i * 2 + 1];
+    const ix = img.data64F[i * 2];
+    const iy = img.data64F[i * 2 + 1];
+    const dx = px - ix;
+    const dy = py - iy;
+    err += dx * dx + dy * dy;
+  }
+  err = Math.sqrt(err / 5);
+
+  const r = rvec.data64F;
+  const t = tvec.data64F;
+  const euler = rvecToEuler(r[0], r[1], r[2]);
+
+  obj.delete(); img.delete(); cam.delete(); dist.delete(); proj.delete(); rvec.delete(); tvec.delete();
+  return { error: err, rvec: [r[0], r[1], r[2]], tvec: [t[0], t[1], t[2]], euler };
+}
+
+function rvecToEuler(rx, ry, rz) {
+  const theta = Math.sqrt(rx * rx + ry * ry + rz * rz) || 1e-6;
+  const kx = rx / theta;
+  const ky = ry / theta;
+  const kz = rz / theta;
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  const v = 1 - c;
+
+  const r00 = kx * kx * v + c;
+  const r01 = kx * ky * v - kz * s;
+  const r02 = kx * kz * v + ky * s;
+  const r10 = ky * kx * v + kz * s;
+  const r11 = ky * ky * v + c;
+  const r12 = ky * kz * v - kx * s;
+  const r20 = kz * kx * v - ky * s;
+  const r21 = kz * ky * v + kx * s;
+  const r22 = kz * kz * v + c;
+
+  const sy = Math.sqrt(r00 * r00 + r10 * r10);
+  let roll, pitch, yaw;
+  if (sy > 1e-6) {
+    roll = Math.atan2(r21, r22);
+    pitch = Math.atan2(-r20, sy);
+    yaw = Math.atan2(r10, r00);
+  } else {
+    roll = Math.atan2(-r12, r11);
+    pitch = Math.atan2(-r20, sy);
+    yaw = 0;
+  }
+  return [radToDeg(roll), radToDeg(pitch), radToDeg(yaw)];
+}
+
+function radToDeg(v) {
+  return v * 180 / Math.PI;
+}
+
+function updateLock(locked) {
+  lockEl.textContent = locked ? 'Tag: LOCK' : 'Tag: searching';
+  if (locked && !lastLock) {
+    beep();
+  }
+  lastLock = locked;
+}
+
+function beep() {
+  const now = performance.now();
+  if (now - lastBeepTime < 800) return;
+  lastBeepTime = now;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = 880;
+  gain.gain.value = 0.05;
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  setTimeout(() => {
+    osc.stop();
+    ctx.close();
+  }, 120);
+}
+
+function combinations(arr, k) {
+  const result = [];
+  const n = arr.length;
+  const stack = [];
+  const backtrack = (start) => {
+    if (stack.length === k) {
+      result.push(stack.slice());
+      return;
+    }
+    for (let i = start; i < n; i++) {
+      stack.push(arr[i]);
+      backtrack(i + 1);
+      stack.pop();
+    }
+  };
+  backtrack(0);
+  return result;
+}
+
+function meanPoint(pts) {
+  let sx = 0;
+  let sy = 0;
+  for (const p of pts) {
+    sx += p.x;
+    sy += p.y;
+  }
+  return { x: sx / pts.length, y: sy / pts.length };
+}
+
+function dist2(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
+}
+
+function sortByAngle(pts, center) {
+  return pts.slice().sort((a, b) => Math.atan2(a.y - center.y, a.x - center.x) - Math.atan2(b.y - center.y, b.x - center.x));
+}
+
+function rectanglePermutations(pts) {
+  const perms = [];
+  for (let i = 0; i < 4; i++) {
+    perms.push([pts[i % 4], pts[(i + 1) % 4], pts[(i + 2) % 4], pts[(i + 3) % 4]]);
+  }
+  const rev = pts.slice().reverse();
+  for (let i = 0; i < 4; i++) {
+    perms.push([rev[i % 4], rev[(i + 1) % 4], rev[(i + 2) % 4], rev[(i + 3) % 4]]);
+  }
+  return perms;
+}
+
 function render() {
   if (video.readyState >= 2) {
     gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -366,6 +625,7 @@ function render() {
     const result = computeNmsPoints();
     drawOverlay(result.points);
     sharpnessEl.textContent = `Sharpness: ${result.sharpness.toFixed(3)}`;
+    estimatePose(result.points);
     const now = performance.now();
     if (currentStream && now - lastInfoTime > 1000) {
       updateCameraInfo(currentStream);
