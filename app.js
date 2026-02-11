@@ -367,7 +367,8 @@ function computeNmsPoints() {
   }
 
   const stable = stabilizePoints(points);
-  return { points: stable, sharpness: computeSharpness(brightness, w, h) };
+  const deduped = dedupePoints(stable, 6);
+  return { points: deduped, sharpness: computeSharpness(brightness, w, h) };
 }
 
 function drawOverlay(points) {
@@ -1170,6 +1171,23 @@ function stabilizePoints(points) {
   }
   prevPoints = matched;
   return matched;
+}
+
+function dedupePoints(points, minDist) {
+  const result = [];
+  const minDist2 = minDist * minDist;
+  const sorted = points.slice().sort((a, b) => b.score - a.score);
+  for (const p of sorted) {
+    let keep = true;
+    for (const q of result) {
+      if (dist2(p, q) < minDist2) {
+        keep = false;
+        break;
+      }
+    }
+    if (keep) result.push(p);
+  }
+  return result;
 }
 
 function applyVideoConstraints(stream) {
