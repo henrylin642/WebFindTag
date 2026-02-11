@@ -34,6 +34,7 @@ let lastConstraintsApplied = false;
 let currentStream = null;
 let currentResolution = { width: 1920, height: 1080 };
 let isRestarting = false;
+let focusCaps = { min: 0, max: 1 };
 
 const nmsConfig = {
   threshold: 0.4,
@@ -393,6 +394,12 @@ async function startCamera() {
   video.srcObject = stream;
   applyVideoConstraints(stream);
   updateCameraInfo(stream);
+  requestAnimationFrame(() => {
+    const focusModeSel = document.getElementById('focusMode');
+    if (focusModeSel) {
+      focusModeSel.dispatchEvent(new Event('change'));
+    }
+  });
   await video.play();
 }
 
@@ -479,6 +486,48 @@ function initControls() {
           isRestarting = false;
         });
     });
+  }
+
+  const focusModeSel = document.getElementById('focusMode');
+  const focusModeVal = document.getElementById('focusModeVal');
+  const focusDistInput = document.getElementById('focusDistance');
+  const focusDistVal = document.getElementById('focusDistanceVal');
+
+  if (focusModeSel && focusModeVal && focusDistInput && focusDistVal) {
+    const applyFocus = () => {
+      const mode = focusModeSel.value;
+      focusModeVal.textContent = mode;
+
+      const track = currentStream ? currentStream.getVideoTracks()[0] : null;
+      if (!track) return;
+
+      const dist = Number.parseFloat(focusDistInput.value);
+      focusDistVal.textContent = dist.toFixed(3);
+
+      const advanced = [];
+      if (mode === 'manual') {
+        advanced.push({ focusMode: 'manual', focusDistance: dist });
+      } else {
+        advanced.push({ focusMode: 'continuous' });
+      }
+
+      track.applyConstraints({ advanced }).catch(() => {});
+    };
+
+    const updateRange = () => {
+      focusDistInput.min = String(focusCaps.min);
+      focusDistInput.max = String(focusCaps.max);
+      if (Number.isFinite(focusCaps.min) && Number.isFinite(focusCaps.max)) {
+        const mid = (focusCaps.min + focusCaps.max) * 0.5;
+        focusDistInput.value = String(mid);
+        focusDistVal.textContent = mid.toFixed(3);
+      }
+    };
+
+    focusModeSel.addEventListener('change', applyFocus);
+    focusDistInput.addEventListener('input', applyFocus);
+
+    updateRange();
   }
 }
 
@@ -574,6 +623,9 @@ function updateCameraInfo(stream) {
   if (!track) return;
   const caps = track.getCapabilities ? track.getCapabilities() : {};
   const settings = track.getSettings ? track.getSettings() : {};
+  if (caps.focusDistance) {
+    focusCaps = { min: caps.focusDistance.min ?? 0, max: caps.focusDistance.max ?? 1 };
+  }
 
   const focus = caps.focusMode ? caps.focusMode.join(',') : 'n/a';
   const exposure = caps.exposureMode ? caps.exposureMode.join(',') : 'n/a';

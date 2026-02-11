@@ -39,6 +39,19 @@
           <span id="refocusVal">ready</span>
         </label>
         <label class="row">
+          <span>focusMode</span>
+          <select id="focusMode">
+            <option value="continuous">continuous</option>
+            <option value="manual">manual</option>
+          </select>
+          <span id="focusModeVal">continuous</span>
+        </label>
+        <label class="row">
+          <span>focusDist</span>
+          <input id="focusDistance" type="range" min="0" max="1" step="0.001" value="0.05" />
+          <span id="focusDistanceVal">0.050</span>
+        </label>
+        <label class="row">
           <span>brightMin</span>
           <input id="brightMin" type="range" min="0" max="1" step="0.01" value="0.25" />
           <span id="brightMinVal">0.25</span>
