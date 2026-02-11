@@ -36,6 +36,9 @@ let currentResolution = { width: 1920, height: 1080 };
 let isRestarting = false;
 let focusCaps = { min: 0, max: 1 };
 let lastInfoTime = 0;
+let exposureCaps = { min: 1, max: 33 };
+let isoCaps = { min: 50, max: 800 };
+let expCompCaps = { min: -2, max: 2 };
 
 const nmsConfig = {
   threshold: 0.4,
@@ -550,6 +553,90 @@ function initControls() {
       focusDistVal.textContent = Number.parseFloat(savedDist).toFixed(3);
     }
   }
+
+  const exposureModeSel = document.getElementById('exposureMode');
+  const exposureModeVal = document.getElementById('exposureModeVal');
+  const exposureTimeInput = document.getElementById('exposureTime');
+  const exposureTimeVal = document.getElementById('exposureTimeVal');
+  const isoInput = document.getElementById('iso');
+  const isoVal = document.getElementById('isoVal');
+  const exposureCompInput = document.getElementById('exposureComp');
+  const exposureCompVal = document.getElementById('exposureCompVal');
+
+  if (exposureModeSel && exposureModeVal && exposureTimeInput && exposureTimeVal && isoInput && isoVal && exposureCompInput && exposureCompVal) {
+    const updateRanges = () => {
+      exposureTimeInput.min = String(exposureCaps.min);
+      exposureTimeInput.max = String(exposureCaps.max);
+      isoInput.min = String(isoCaps.min);
+      isoInput.max = String(isoCaps.max);
+      exposureCompInput.min = String(expCompCaps.min);
+      exposureCompInput.max = String(expCompCaps.max);
+    };
+
+    const applyExposure = () => {
+      const mode = exposureModeSel.value;
+      exposureModeVal.textContent = mode;
+
+      const track = currentStream ? currentStream.getVideoTracks()[0] : null;
+      if (!track) return;
+
+      const exposureTime = Number.parseFloat(exposureTimeInput.value);
+      const iso = Number.parseFloat(isoInput.value);
+      const expComp = Number.parseFloat(exposureCompInput.value);
+
+      exposureTimeVal.textContent = exposureTime.toFixed(1);
+      isoVal.textContent = Math.round(iso);
+      exposureCompVal.textContent = expComp.toFixed(1);
+
+      const advanced = [];
+      if (mode === 'manual') {
+        advanced.push({
+          exposureMode: 'manual',
+          exposureTime,
+          iso,
+          exposureCompensation: expComp,
+        });
+      } else {
+        advanced.push({ exposureMode: 'continuous' });
+      }
+
+      track.applyConstraints({ advanced }).then(() => {
+        updateCameraInfo(currentStream);
+      }).catch(() => {});
+
+      localStorage.setItem('exposureMode', mode);
+      localStorage.setItem('exposureTime', String(exposureTime));
+      localStorage.setItem('iso', String(iso));
+      localStorage.setItem('exposureComp', String(expComp));
+    };
+
+    exposureModeSel.addEventListener('change', applyExposure);
+    exposureTimeInput.addEventListener('input', applyExposure);
+    isoInput.addEventListener('input', applyExposure);
+    exposureCompInput.addEventListener('input', applyExposure);
+
+    updateRanges();
+    const savedMode = localStorage.getItem('exposureMode');
+    const savedTime = localStorage.getItem('exposureTime');
+    const savedIso = localStorage.getItem('iso');
+    const savedComp = localStorage.getItem('exposureComp');
+    if (savedMode) {
+      exposureModeSel.value = savedMode;
+      exposureModeVal.textContent = savedMode;
+    }
+    if (savedTime) {
+      exposureTimeInput.value = savedTime;
+      exposureTimeVal.textContent = Number.parseFloat(savedTime).toFixed(1);
+    }
+    if (savedIso) {
+      isoInput.value = savedIso;
+      isoVal.textContent = String(Math.round(Number.parseFloat(savedIso)));
+    }
+    if (savedComp) {
+      exposureCompInput.value = savedComp;
+      exposureCompVal.textContent = Number.parseFloat(savedComp).toFixed(1);
+    }
+  }
 }
 
 function smoothstep(edge0, edge1, x) {
@@ -646,6 +733,18 @@ function updateCameraInfo(stream) {
   const settings = track.getSettings ? track.getSettings() : {};
   if (caps.focusDistance) {
     focusCaps = { min: caps.focusDistance.min ?? 0, max: caps.focusDistance.max ?? 1 };
+  }
+  if (caps.exposureTime) {
+    exposureCaps = { min: caps.exposureTime.min ?? 1, max: caps.exposureTime.max ?? 33 };
+  }
+  if (caps.iso) {
+    isoCaps = { min: caps.iso.min ?? 50, max: caps.iso.max ?? 800 };
+  }
+  if (caps.exposureCompensation) {
+    expCompCaps = {
+      min: caps.exposureCompensation.min ?? -2,
+      max: caps.exposureCompensation.max ?? 2,
+    };
   }
 
   const focus = caps.focusMode ? caps.focusMode.join(',') : 'n/a';
