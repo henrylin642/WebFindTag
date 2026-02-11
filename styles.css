@@ -83,6 +83,19 @@ html, body {
   margin-bottom: 6px;
 }
 
+#caminfo {
+  top: auto;
+  bottom: 12px;
+  right: 12px;
+  width: min(360px, 92vw);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+#caminfo > div {
+  word-break: break-all;
+}
+
 .row {
   display: grid;
   grid-template-columns: 70px 1fr 44px;
