@@ -84,10 +84,11 @@ html, body {
 }
 
 #caminfo {
-  top: auto;
-  bottom: 12px;
-  right: 12px;
-  width: min(360px, 92vw);
+  top: 12px;
+  bottom: auto;
+  left: 12px;
+  right: auto;
+  width: min(360px, 60vw);
   font-size: 11px;
   line-height: 1.3;
 }
