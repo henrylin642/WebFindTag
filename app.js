@@ -537,16 +537,9 @@ async function estimatePose(points) {
   rectEl.textContent = `Rect: ${bestStruct.score.toFixed(2)} w/h=${bestStruct.ratio.toFixed(2)}`;
   updateLock(bestStruct.score >= 0.55);
 
-  const imgPts = [
-    bestStruct.rect.ordered[0],
-    bestStruct.rect.ordered[1],
-    bestStruct.rect.ordered[2],
-    bestStruct.rect.ordered[3],
-    bestStruct.led5,
-  ];
-  const pose = solvePnP(imgPts);
+  const pose = solvePnPBest(bestStruct.rect.ordered, bestStruct.led5);
   if (!pose) {
-    poseEl.textContent = 'Pose: -';
+    poseEl.textContent = 'Pose: - (PnP fail)';
     return;
   }
   const smooth = applyKalman(pose);
@@ -760,6 +753,20 @@ function solvePnP(imagePoints) {
   obj.delete(); img.delete(); cam.delete(); dist.delete(); proj.delete(); rvec.delete(); tvec.delete();
   const score = 1 / (1 + err);
   return { error: err, score, rvec: [r[0], r[1], r[2]], tvec: [t[0], t[1], t[2]], euler };
+}
+
+function solvePnPBest(rectPoints, led5) {
+  const perms = rectanglePermutations(rectPoints);
+  let best = null;
+  for (const perm of perms) {
+    const imgPts = [perm[0], perm[1], perm[2], perm[3], led5];
+    const pose = solvePnP(imgPts);
+    if (!pose) continue;
+    if (!best || pose.error < best.error) {
+      best = pose;
+    }
+  }
+  return best;
 }
 
 function rvecToEuler(rx, ry, rz) {
