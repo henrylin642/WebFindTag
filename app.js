@@ -536,7 +536,23 @@ async function estimatePose(points) {
   scoreEl.textContent = `Score: ${bestStruct.score.toFixed(2)} ratio=${bestStruct.ratio.toFixed(2)} sym=${bestStruct.sym.toFixed(2)}`;
   rectEl.textContent = `Rect: ${bestStruct.score.toFixed(2)} w/h=${bestStruct.ratio.toFixed(2)}`;
   updateLock(bestStruct.score >= 0.55);
-  poseEl.textContent = 'Pose: -';
+
+  const imgPts = [
+    bestStruct.rect.ordered[0],
+    bestStruct.rect.ordered[1],
+    bestStruct.rect.ordered[2],
+    bestStruct.rect.ordered[3],
+    bestStruct.led5,
+  ];
+  const pose = solvePnP(imgPts);
+  if (!pose) {
+    poseEl.textContent = 'Pose: -';
+    return;
+  }
+  const smooth = applyKalman(pose);
+  poseEl.textContent =
+    `Pose: x=${smooth.tvec[0].toFixed(1)} y=${smooth.tvec[1].toFixed(1)} z=${smooth.tvec[2].toFixed(1)}mm ` +
+    `r=${smooth.euler[0].toFixed(1)} p=${smooth.euler[1].toFixed(1)} y=${smooth.euler[2].toFixed(1)} err=${pose.error.toFixed(2)}`;
 }
 
 function findBestPose(points) {
