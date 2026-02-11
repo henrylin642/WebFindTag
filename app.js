@@ -31,6 +31,7 @@ let nmsHeight = 180;
 let lastConstraintsApplied = false;
 let currentStream = null;
 let currentResolution = { width: 1920, height: 1080 };
+let isRestarting = false;
 
 const nmsConfig = {
   threshold: 0.4,
@@ -454,6 +455,27 @@ function initControls() {
       applyResolution().catch(() => {});
     });
     applyResolution().catch(() => {});
+  }
+
+  const refocusBtn = document.getElementById('refocusBtn');
+  const refocusVal = document.getElementById('refocusVal');
+  if (refocusBtn && refocusVal) {
+    refocusBtn.addEventListener('click', () => {
+      if (isRestarting) return;
+      isRestarting = true;
+      refocusVal.textContent = 'restarting…';
+      lastConstraintsApplied = false;
+      startCamera()
+        .then(() => {
+          refocusVal.textContent = 'ready';
+        })
+        .catch(() => {
+          refocusVal.textContent = 'failed';
+        })
+        .finally(() => {
+          isRestarting = false;
+        });
+    });
   }
 }
 
