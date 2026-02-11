@@ -385,6 +385,63 @@ function drawOverlay(points) {
     overlayCtx.fill();
   }
   pointsEl.textContent = `Points: ${points.length}`;
+  drawReferenceShape();
+}
+
+function drawReferenceShape() {
+  const pad = 14;
+  const boxW = 120;
+  const boxH = 180;
+  const x0 = overlay.width - boxW - pad;
+  const y0 = overlay.height - boxH - pad;
+
+  overlayCtx.save();
+  overlayCtx.strokeStyle = 'rgba(255,255,255,0.6)';
+  overlayCtx.fillStyle = 'rgba(10,16,24,0.45)';
+  overlayCtx.lineWidth = 1.5;
+  overlayCtx.beginPath();
+  overlayCtx.roundRect(x0, y0, boxW, boxH, 8);
+  overlayCtx.fill();
+  overlayCtx.stroke();
+
+  const cx = x0 + boxW / 2;
+  const cy = y0 + boxH / 2 + 10;
+  const scale = 0.7;
+
+  // Draw LED4-LED1 rectangle.
+  const rx = 44 * scale;
+  const ry = 30 * scale;
+  overlayCtx.strokeStyle = 'rgba(74,163,255,0.9)';
+  overlayCtx.lineWidth = 2;
+  overlayCtx.strokeRect(cx - rx, cy - ry, rx * 2, ry * 2);
+
+  // Draw LED points.
+  const leds = [
+    { x: cx + rx, y: cy - ry }, // LED1
+    { x: cx + rx, y: cy + ry }, // LED2
+    { x: cx - rx, y: cy + ry }, // LED3
+    { x: cx - rx, y: cy - ry }, // LED4
+    { x: cx, y: cy - ry - 50 * scale }, // LED5
+  ];
+  overlayCtx.fillStyle = 'rgba(255,255,255,0.9)';
+  for (const p of leds) {
+    overlayCtx.beginPath();
+    overlayCtx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    overlayCtx.fill();
+  }
+
+  // Draw three horizontal strips.
+  overlayCtx.strokeStyle = 'rgba(255,220,120,0.9)';
+  overlayCtx.lineWidth = 4;
+  for (let i = -1; i <= 1; i++) {
+    const y = cy + i * 16 * scale;
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(cx - 34 * scale, y);
+    overlayCtx.lineTo(cx + 34 * scale, y);
+    overlayCtx.stroke();
+  }
+
+  overlayCtx.restore();
 }
 
 async function estimatePose(points) {
