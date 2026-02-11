@@ -21,8 +21,8 @@ const vertSrc = `
 attribute vec2 aPos;
 varying vec2 vUv;
 void main() {
-  // Flip both axes to correct 180-degree rotation on mobile.
-  vUv = vec2(-aPos.x, -aPos.y) * 0.5 + 0.5;
+  // Flip Y only to correct upside-down without mirroring left-right.
+  vUv = vec2(aPos.x, -aPos.y) * 0.5 + 0.5;
   gl_Position = vec4(aPos, 0.0, 1.0);
 }
 `;
