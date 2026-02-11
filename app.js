@@ -3,6 +3,7 @@ const canvas = document.getElementById('gl');
 const overlay = document.getElementById('overlay');
 const statusEl = document.getElementById('status');
 const pointsEl = document.getElementById('points');
+const sharpnessEl = document.getElementById('sharpness');
 
 const params = {
   brightMin: 0.25,
@@ -27,6 +28,7 @@ let nmsCanvas;
 let nmsCtx;
 let nmsWidth = 320;
 let nmsHeight = 180;
+let lastConstraintsApplied = false;
 
 const nmsConfig = {
   threshold: 0.4,
@@ -318,7 +320,7 @@ function computeNmsPoints() {
     if (points.length >= nmsConfig.maxPoints) break;
   }
 
-  return points;
+  return { points, sharpness: computeSharpness(brightness, w, h) };
 }
 
 function drawOverlay(points) {
@@ -353,8 +355,9 @@ function render() {
     }
     updateUniforms();
     gl.drawArrays(gl.TRIANGLES, 0, 6);
-    const points = computeNmsPoints();
-    drawOverlay(points);
+    const result = computeNmsPoints();
+    drawOverlay(result.points);
+    sharpnessEl.textContent = `Sharpness: ${result.sharpness.toFixed(3)}`;
   }
   requestAnimationFrame(render);
 }
@@ -378,6 +381,7 @@ async function startCamera() {
 
   const stream = await navigator.mediaDevices.getUserMedia(constraints);
   video.srcObject = stream;
+  applyVideoConstraints(stream);
   await video.play();
 }
 
@@ -467,5 +471,50 @@ function boxBlur(src, dst, w, h, radius) {
       const v1 = tmp[Math.min(h - 1, Math.max(0, y1)) * w + x];
       sum += v1 - v0;
     }
+  }
+}
+
+function computeSharpness(src, w, h) {
+  let sum = 0;
+  let count = 0;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y * w + x;
+      const lap =
+        4 * src[idx] -
+        src[idx - 1] -
+        src[idx + 1] -
+        src[idx - w] -
+        src[idx + w];
+      sum += lap * lap;
+      count++;
+    }
+  }
+  return count > 0 ? sum / count : 0;
+}
+
+function applyVideoConstraints(stream) {
+  if (lastConstraintsApplied) return;
+  const track = stream.getVideoTracks()[0];
+  if (!track) return;
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  const constraints = {};
+
+  if (caps.focusMode && caps.focusMode.includes('continuous')) {
+    constraints.focusMode = 'continuous';
+  }
+  if (caps.exposureMode && caps.exposureMode.includes('continuous')) {
+    constraints.exposureMode = 'continuous';
+  }
+  if (caps.whiteBalanceMode && caps.whiteBalanceMode.includes('continuous')) {
+    constraints.whiteBalanceMode = 'continuous';
+  }
+  if (caps.torch) {
+    constraints.torch = false;
+  }
+
+  if (Object.keys(constraints).length > 0) {
+    track.applyConstraints({ advanced: [constraints] }).catch(() => {});
+    lastConstraintsApplied = true;
   }
 }
