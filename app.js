@@ -66,9 +66,9 @@ const cvReady = new Promise((resolve) => {
 });
 
 const nmsConfig = {
-  threshold: 0.4,
+  threshold: 0.28,
   radius: 3,
-  maxPoints: 20,
+  maxPoints: 32,
 };
 
 const objectPoints = [
@@ -529,7 +529,7 @@ function findBestPose(points) {
     }
   }
 
-  if (best && best.error < 12) return best;
+  if (best && best.error < 20) return best;
   return null;
 }
 
@@ -1106,8 +1106,8 @@ function computeLinePenalty(brightness, w, h, x, y) {
     right++;
   }
   const run = left + right + 1;
-  if (run >= 8) return 0.35;
-  if (run >= 5) return 0.6;
+  if (run >= 10) return 0.6;
+  if (run >= 7) return 0.8;
   return 1.0;
 }
 
@@ -1129,8 +1129,8 @@ function stabilizePoints(points) {
     }
     if (best) {
       matched.push({
-        x: p.x * 0.6 + best.x * 0.4,
-        y: p.y * 0.6 + best.y * 0.4,
+        x: p.x * 0.8 + best.x * 0.2,
+        y: p.y * 0.8 + best.y * 0.2,
         score: p.score,
       });
     } else {
