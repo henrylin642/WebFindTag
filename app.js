@@ -574,7 +574,8 @@ function findBestPose(points) {
       x: viewRect.x + bestRect.led5.x * (viewRect.w / nmsWidth),
       y: viewRect.y + bestRect.led5.y * (viewRect.h / nmsHeight),
     };
-    rectEl.textContent = `Rect: ${bestRect.rect.score.toFixed(2)}`;
+    const ratio = bestRect.rect.ratio;
+    rectEl.textContent = `Rect: ${bestRect.rect.score.toFixed(2)} w/h=${ratio.toFixed(2)}`;
   } else {
     rectEl.textContent = 'Rect: -';
   }
@@ -599,7 +600,7 @@ function scoreRectangle(pts) {
   const ratioErr = Math.abs(Math.log(ratio / target));
   const score = Math.max(0, 1.0 - ratioErr * 1.5);
   if (score < 0.05) return null;
-  return { center, ordered, score };
+  return { center, ordered, score, ratio };
 }
 
 function pickLed5(points, center) {
