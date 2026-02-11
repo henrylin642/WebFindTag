@@ -30,6 +30,14 @@ html, body {
   background: #000;
 }
 
+#overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
 #video {
   position: absolute;
   width: 1px;

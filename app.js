@@ -1,6 +1,8 @@
 const video = document.getElementById('video');
 const canvas = document.getElementById('gl');
+const overlay = document.getElementById('overlay');
 const statusEl = document.getElementById('status');
+const pointsEl = document.getElementById('points');
 
 const params = {
   brightMin: 0.25,
@@ -18,6 +20,17 @@ let program;
 let tex;
 let vbo;
 let uniforms = {};
+let overlayCtx;
+let nmsCanvas;
+let nmsCtx;
+let nmsWidth = 320;
+let nmsHeight = 180;
+
+const nmsConfig = {
+  threshold: 0.4,
+  radius: 3,
+  maxPoints: 20,
+};
 
 const vertSrc = `
 attribute vec2 aPos;
@@ -178,6 +191,140 @@ function resize() {
     canvas.height = h;
     gl.viewport(0, 0, w, h);
   }
+  if (overlay.width !== w || overlay.height !== h) {
+    overlay.width = w;
+    overlay.height = h;
+  }
+}
+
+function setupNms() {
+  overlayCtx = overlay.getContext('2d');
+  nmsCanvas = document.createElement('canvas');
+  nmsCtx = nmsCanvas.getContext('2d', { willReadFrequently: true });
+  nmsCanvas.width = nmsWidth;
+  nmsCanvas.height = nmsHeight;
+}
+
+function computeNmsPoints() {
+  if (!video.videoWidth || !video.videoHeight) return [];
+
+  const aspect = video.videoWidth / video.videoHeight;
+  nmsWidth = 360;
+  nmsHeight = Math.round(nmsWidth / aspect);
+  if (nmsCanvas.width !== nmsWidth || nmsCanvas.height !== nmsHeight) {
+    nmsCanvas.width = nmsWidth;
+    nmsCanvas.height = nmsHeight;
+  }
+
+  nmsCtx.drawImage(video, 0, 0, nmsWidth, nmsHeight);
+  const img = nmsCtx.getImageData(0, 0, nmsWidth, nmsHeight);
+  const data = img.data;
+  const total = nmsWidth * nmsHeight;
+
+  const brightness = new Float32Array(total);
+  const blueDiff = new Float32Array(total);
+  const saturation = new Float32Array(total);
+  const mask = new Float32Array(total);
+
+  for (let i = 0, p = 0; i < total; i++, p += 4) {
+    const r = data[p] / 255;
+    const g = data[p + 1] / 255;
+    const b = data[p + 2] / 255;
+    const maxc = Math.max(r, g, b);
+    const minc = Math.min(r, g, b);
+    brightness[i] = maxc;
+    blueDiff[i] = b - (r + g) * 0.5;
+    saturation[i] = maxc - minc;
+  }
+
+  const w = nmsWidth;
+  const h = nmsHeight;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      let localAvg = brightness[idx];
+      if (params.highpassMix > 0 && x > 0 && y > 0 && x < w - 1 && y < h - 1) {
+        let sum = 0;
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            sum += brightness[(y + oy) * w + (x + ox)];
+          }
+        }
+        localAvg = sum / 9;
+      }
+      const highpass = Math.max(brightness[idx] - localAvg, 0) * params.highpassGain;
+      const brightMix = params.highpassMix > 0
+        ? brightness[idx] * (1 - params.highpassMix) + highpass * params.highpassMix
+        : brightness[idx];
+
+      const brightnessGate = smoothstep(params.brightMin, params.brightMax, brightMix);
+      const blueGate = smoothstep(params.blueMin, params.blueMax, blueDiff[idx]);
+      const satGate = smoothstep(params.satMin, params.satMax, saturation[idx]);
+      mask[idx] = brightnessGate * blueGate * satGate;
+    }
+  }
+
+  const points = [];
+  const r = nmsConfig.radius;
+  for (let y = r; y < h - r; y++) {
+    for (let x = r; x < w - r; x++) {
+      const idx = y * w + x;
+      const v = mask[idx];
+      if (v < nmsConfig.threshold) continue;
+      let isMax = true;
+      for (let oy = -r; oy <= r && isMax; oy++) {
+        for (let ox = -r; ox <= r; ox++) {
+          if (ox === 0 && oy === 0) continue;
+          if (mask[(y + oy) * w + (x + ox)] > v) {
+            isMax = false;
+            break;
+          }
+        }
+      }
+      if (!isMax) continue;
+      let sum = 0;
+      let sx = 0;
+      let sy = 0;
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          const val = mask[(y + oy) * w + (x + ox)];
+          sum += val;
+          sx += (x + ox) * val;
+          sy += (y + oy) * val;
+        }
+      }
+      const px = sum > 0 ? sx / sum : x;
+      const py = sum > 0 ? sy / sum : y;
+      points.push({ x: px, y: py, score: v });
+      if (points.length >= nmsConfig.maxPoints) break;
+    }
+    if (points.length >= nmsConfig.maxPoints) break;
+  }
+
+  return points;
+}
+
+function drawOverlay(points) {
+  if (!overlayCtx) return;
+  overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+  const sx = overlay.width / nmsWidth;
+  const sy = overlay.height / nmsHeight;
+  overlayCtx.lineWidth = 2;
+  overlayCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+  overlayCtx.fillStyle = 'rgba(74, 163, 255, 0.85)';
+
+  for (const pt of points) {
+    const x = pt.x * sx;
+    const y = pt.y * sy;
+    overlayCtx.beginPath();
+    overlayCtx.arc(x, y, 5, 0, Math.PI * 2);
+    overlayCtx.stroke();
+    overlayCtx.beginPath();
+    overlayCtx.arc(x, y, 2.5, 0, Math.PI * 2);
+    overlayCtx.fill();
+  }
+  pointsEl.textContent = `Points: ${points.length}`;
 }
 
 function render() {
@@ -189,6 +336,8 @@ function render() {
     }
     updateUniforms();
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+    const points = computeNmsPoints();
+    drawOverlay(points);
   }
   requestAnimationFrame(render);
 }
@@ -218,6 +367,7 @@ async function startCamera() {
 async function main() {
   try {
     initGL();
+    setupNms();
     resize();
     window.addEventListener('resize', resize);
     initControls();
@@ -257,4 +407,9 @@ function initControls() {
     input.addEventListener('input', apply);
     apply();
   });
+}
+
+function smoothstep(edge0, edge1, x) {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
 }
