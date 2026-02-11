@@ -9,6 +9,8 @@ const params = {
   blueMax: 0.25,
   satMin: 0.05,
   satMax: 0.35,
+  highpassMix: 0.0,
+  highpassGain: 1.0,
 };
 
 let gl;
@@ -31,12 +33,15 @@ const fragSrc = `
 precision mediump float;
 
 uniform sampler2D uTex;
+uniform vec2 uTexSize;
 uniform float uBrightMin;
 uniform float uBrightMax;
 uniform float uBlueMin;
 uniform float uBlueMax;
 uniform float uSatMin;
 uniform float uSatMax;
+uniform float uHighpassMix;
+uniform float uHighpassGain;
 
 varying vec2 vUv;
 
@@ -46,7 +51,30 @@ void main() {
   float blueDiff = rgb.b - (rgb.r + rgb.g) * 0.5;
   float saturation = max(max(rgb.r, rgb.g), rgb.b) - min(min(rgb.r, rgb.g), rgb.b);
 
-  float brightnessGate = smoothstep(uBrightMin, uBrightMax, brightness);
+  vec2 texel = 1.0 / uTexSize;
+  vec3 c00 = texture2D(uTex, vUv + texel * vec2(-1.0, -1.0)).rgb;
+  vec3 c01 = texture2D(uTex, vUv + texel * vec2( 0.0, -1.0)).rgb;
+  vec3 c02 = texture2D(uTex, vUv + texel * vec2( 1.0, -1.0)).rgb;
+  vec3 c10 = texture2D(uTex, vUv + texel * vec2(-1.0,  0.0)).rgb;
+  vec3 c12 = texture2D(uTex, vUv + texel * vec2( 1.0,  0.0)).rgb;
+  vec3 c20 = texture2D(uTex, vUv + texel * vec2(-1.0,  1.0)).rgb;
+  vec3 c21 = texture2D(uTex, vUv + texel * vec2( 0.0,  1.0)).rgb;
+  vec3 c22 = texture2D(uTex, vUv + texel * vec2( 1.0,  1.0)).rgb;
+
+  float b00 = max(max(c00.r, c00.g), c00.b);
+  float b01 = max(max(c01.r, c01.g), c01.b);
+  float b02 = max(max(c02.r, c02.g), c02.b);
+  float b10 = max(max(c10.r, c10.g), c10.b);
+  float b11 = brightness;
+  float b12 = max(max(c12.r, c12.g), c12.b);
+  float b20 = max(max(c20.r, c20.g), c20.b);
+  float b21 = max(max(c21.r, c21.g), c21.b);
+  float b22 = max(max(c22.r, c22.g), c22.b);
+
+  float localAvg = (b00 + b01 + b02 + b10 + b11 + b12 + b20 + b21 + b22) / 9.0;
+  float highpass = max(brightness - localAvg, 0.0) * uHighpassGain;
+
+  float brightnessGate = smoothstep(uBrightMin, uBrightMax, mix(brightness, highpass, uHighpassMix));
   float blueGate = smoothstep(uBlueMin, uBlueMax, blueDiff);
   float satGate = smoothstep(uSatMin, uSatMax, saturation);
 
@@ -117,12 +145,15 @@ function initGL() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
   uniforms.uTex = gl.getUniformLocation(program, 'uTex');
+  uniforms.uTexSize = gl.getUniformLocation(program, 'uTexSize');
   uniforms.uBrightMin = gl.getUniformLocation(program, 'uBrightMin');
   uniforms.uBrightMax = gl.getUniformLocation(program, 'uBrightMax');
   uniforms.uBlueMin = gl.getUniformLocation(program, 'uBlueMin');
   uniforms.uBlueMax = gl.getUniformLocation(program, 'uBlueMax');
   uniforms.uSatMin = gl.getUniformLocation(program, 'uSatMin');
   uniforms.uSatMax = gl.getUniformLocation(program, 'uSatMax');
+  uniforms.uHighpassMix = gl.getUniformLocation(program, 'uHighpassMix');
+  uniforms.uHighpassGain = gl.getUniformLocation(program, 'uHighpassGain');
 
   gl.uniform1i(uniforms.uTex, 0);
 }
@@ -134,6 +165,8 @@ function updateUniforms() {
   gl.uniform1f(uniforms.uBlueMax, params.blueMax);
   gl.uniform1f(uniforms.uSatMin, params.satMin);
   gl.uniform1f(uniforms.uSatMax, params.satMax);
+  gl.uniform1f(uniforms.uHighpassMix, params.highpassMix);
+  gl.uniform1f(uniforms.uHighpassGain, params.highpassGain);
 }
 
 function resize() {
@@ -151,6 +184,9 @@ function render() {
   if (video.readyState >= 2) {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
+    if (video.videoWidth && video.videoHeight) {
+      gl.uniform2f(uniforms.uTexSize, video.videoWidth, video.videoHeight);
+    }
     updateUniforms();
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
@@ -203,6 +239,8 @@ function initControls() {
     ['blueMax', 'blueMaxVal'],
     ['satMin', 'satMinVal'],
     ['satMax', 'satMaxVal'],
+    ['highpassMix', 'highpassMixVal'],
+    ['highpassGain', 'highpassGainVal'],
   ];
 
   bindings.forEach(([id, valId]) => {
