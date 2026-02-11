@@ -17,7 +17,11 @@
         <div id="sharpness">Sharpness: 0</div>
       </div>
       <div id="controls" class="panel">
-        <div class="panel-title">Mask Params</div>
+        <div class="panel-header">
+          <div class="panel-title">Mask Params</div>
+          <button id="toggleControls" type="button">Hide</button>
+        </div>
+        <div id="controlsBody">
         <label class="row">
           <span>resolution</span>
           <select id="resolution">
@@ -119,6 +123,7 @@
           <input id="dogGain" type="range" min="0" max="3" step="0.05" value="1.0" />
           <span id="dogGainVal">1.00</span>
         </label>
+        </div>
       </div>
     </main>
     <video id="video" playsinline muted></video>

@@ -428,6 +428,14 @@ async function main() {
 main();
 
 function initControls() {
+  const controls = document.getElementById('controls');
+  const toggleBtn = document.getElementById('toggleControls');
+  if (controls && toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const collapsed = controls.classList.toggle('collapsed');
+      toggleBtn.textContent = collapsed ? 'Show' : 'Hide';
+    });
+  }
   const bindings = [
     ['brightMin', 'brightMinVal'],
     ['brightMax', 'brightMaxVal'],
