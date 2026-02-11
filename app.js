@@ -43,6 +43,7 @@ let expCompCaps = { min: -2, max: 2 };
 let lastLock = false;
 let lastBeepTime = 0;
 let filteredPose = null;
+let viewRect = { x: 0, y: 0, w: 0, h: 0 };
 
 const kalmanConfig = {
   alpha: 0.35,
@@ -285,13 +286,14 @@ function computeNmsPoints() {
 
   const w = nmsWidth;
   const h = nmsHeight;
+  const roiH = Math.floor(h * 0.5);
   const blurSmall = new Float32Array(total);
   const blurLarge = new Float32Array(total);
   if (params.dogMix > 0) {
     boxBlur(brightness, blurSmall, w, h, 1);
     boxBlur(brightness, blurLarge, w, h, 3);
   }
-  for (let y = 0; y < h; y++) {
+  for (let y = 0; y < roiH; y++) {
     for (let x = 0; x < w; x++) {
       const idx = y * w + x;
       let localAvg = brightness[idx];
@@ -326,7 +328,7 @@ function computeNmsPoints() {
 
   const points = [];
   const r = nmsConfig.radius;
-  for (let y = r; y < h - r; y++) {
+  for (let y = r; y < roiH - r; y++) {
     for (let x = r; x < w - r; x++) {
       const idx = y * w + x;
       const v = mask[idx];
@@ -368,15 +370,15 @@ function drawOverlay(points) {
   if (!overlayCtx) return;
   overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
 
-  const sx = overlay.width / nmsWidth;
-  const sy = overlay.height / nmsHeight;
+  const sx = viewRect.w / nmsWidth;
+  const sy = viewRect.h / nmsHeight;
   overlayCtx.lineWidth = 2;
   overlayCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
   overlayCtx.fillStyle = 'rgba(74, 163, 255, 0.85)';
 
   for (const pt of points) {
-    const x = pt.x * sx;
-    const y = pt.y * sy;
+    const x = viewRect.x + pt.x * sx;
+    const y = viewRect.y + pt.y * sy;
     overlayCtx.beginPath();
     overlayCtx.arc(x, y, 5, 0, Math.PI * 2);
     overlayCtx.stroke();
@@ -385,6 +387,7 @@ function drawOverlay(points) {
     overlayCtx.fill();
   }
   pointsEl.textContent = `Points: ${points.length}`;
+  drawRoiCircle();
   drawReferenceShape();
 }
 
@@ -441,6 +444,19 @@ function drawReferenceShape() {
     overlayCtx.stroke();
   }
 
+  overlayCtx.restore();
+}
+
+function drawRoiCircle() {
+  const radius = overlay.width * 0.25;
+  const cx = overlay.width / 2;
+  const cy = overlay.height * 0.25;
+  overlayCtx.save();
+  overlayCtx.strokeStyle = 'rgba(0, 200, 255, 0.7)';
+  overlayCtx.lineWidth = 2;
+  overlayCtx.beginPath();
+  overlayCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+  overlayCtx.stroke();
   overlayCtx.restore();
 }
 
@@ -610,6 +626,23 @@ function updateLock(locked) {
   lastLock = locked;
 }
 
+function computeViewRect(srcW, srcH, dstW, dstH) {
+  const srcAspect = srcW / srcH;
+  const dstAspect = dstW / dstH;
+  let w;
+  let h;
+  if (dstAspect > srcAspect) {
+    h = dstH;
+    w = h * srcAspect;
+  } else {
+    w = dstW;
+    h = w / srcAspect;
+  }
+  const x = (dstW - w) / 2;
+  const y = (dstH - h) / 2;
+  return { x, y, w, h };
+}
+
 function applyKalman(pose) {
   if (!filteredPose) {
     filteredPose = {
@@ -702,6 +735,7 @@ function render() {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
     if (video.videoWidth && video.videoHeight) {
       gl.uniform2f(uniforms.uTexSize, video.videoWidth, video.videoHeight);
+      viewRect = computeViewRect(video.videoWidth, video.videoHeight, overlay.width, overlay.height);
     }
     updateUniforms();
     gl.drawArrays(gl.TRIANGLES, 0, 6);
