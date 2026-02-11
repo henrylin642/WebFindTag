@@ -7,6 +7,7 @@ const sharpnessEl = document.getElementById('sharpness');
 const lockEl = document.getElementById('lock');
 const scoreEl = document.getElementById('score');
 const rectEl = document.getElementById('rect');
+const pnpEl = document.getElementById('pnp');
 const poseEl = document.getElementById('pose');
 
 const params = {
@@ -529,6 +530,7 @@ async function estimatePose(points) {
     updateLock(false);
     scoreEl.textContent = 'Score: -';
     rectEl.textContent = 'Rect: -';
+    pnpEl.textContent = 'PnP: -';
     poseEl.textContent = 'Pose: -';
     return;
   }
@@ -539,9 +541,11 @@ async function estimatePose(points) {
 
   const pose = solvePnPBest(bestStruct.rect.ordered, bestStruct.led5);
   if (!pose) {
-    poseEl.textContent = 'Pose: - (PnP fail)';
+    pnpEl.textContent = 'PnP: fail';
+    poseEl.textContent = 'Pose: -';
     return;
   }
+  pnpEl.textContent = `PnP: ok err=${pose.error.toFixed(2)}`;
   const smooth = applyKalman(pose);
   poseEl.textContent =
     `Pose: x=${smooth.tvec[0].toFixed(1)} y=${smooth.tvec[1].toFixed(1)} z=${smooth.tvec[2].toFixed(1)}mm ` +
@@ -726,7 +730,15 @@ function solvePnP(imagePoints) {
   const rvec = new cv.Mat();
   const tvec = new cv.Mat();
 
-  const ok = cv.solvePnP(obj, img, cam, dist, rvec, tvec, false, cv.SOLVEPNP_ITERATIVE);
+  let ok = false;
+  try {
+    ok = cv.solvePnP(obj, img, cam, dist, rvec, tvec, false, cv.SOLVEPNP_EPNP);
+    if (!ok) {
+      ok = cv.solvePnP(obj, img, cam, dist, rvec, tvec, false, cv.SOLVEPNP_ITERATIVE);
+    }
+  } catch (e) {
+    ok = false;
+  }
   if (!ok) {
     obj.delete(); img.delete(); cam.delete(); dist.delete(); rvec.delete(); tvec.delete();
     return null;
