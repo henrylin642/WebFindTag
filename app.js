@@ -519,24 +519,24 @@ async function estimatePose(points) {
   if (candidates.length < 5) {
     updateLock(false);
     scoreEl.textContent = 'Score: -';
+    rectEl.textContent = 'Rect: -';
     poseEl.textContent = 'Pose: -';
     return;
   }
 
-  const best = findBestPose(candidates);
-  if (!best) {
+  const bestStruct = findBestStructure(candidates);
+  if (!bestStruct) {
     updateLock(false);
     scoreEl.textContent = 'Score: -';
+    rectEl.textContent = 'Rect: -';
     poseEl.textContent = 'Pose: -';
     return;
   }
 
-  updateLock(true);
-  scoreEl.textContent = `Score: ${best.score.toFixed(3)} err=${best.error.toFixed(2)}`;
-  const smooth = applyKalman(best);
-  poseEl.textContent =
-    `Pose: x=${smooth.tvec[0].toFixed(1)} y=${smooth.tvec[1].toFixed(1)} z=${smooth.tvec[2].toFixed(1)}mm ` +
-    `r=${smooth.euler[0].toFixed(1)} p=${smooth.euler[1].toFixed(1)} y=${smooth.euler[2].toFixed(1)}`;
+  scoreEl.textContent = `Score: ${bestStruct.score.toFixed(2)} ratio=${bestStruct.ratio.toFixed(2)} sym=${bestStruct.sym.toFixed(2)}`;
+  rectEl.textContent = `Rect: ${bestStruct.score.toFixed(2)} w/h=${bestStruct.ratio.toFixed(2)}`;
+  updateLock(bestStruct.score >= 0.55);
+  poseEl.textContent = 'Pose: -';
 }
 
 function findBestPose(points) {
@@ -603,6 +603,48 @@ function findBestPose(points) {
   return null;
 }
 
+function findBestStructure(points) {
+  const combos = combinations(points, 4);
+  let best = null;
+  debugRect = null;
+  debugLed5 = null;
+  rectEl.textContent = 'Rect: -';
+
+  for (const quad of combos) {
+    const rect = scoreRectangle(quad);
+    if (!rect) continue;
+    const led5 = pickLed5(points, rect.center);
+    if (!led5) continue;
+
+    const led5Ok = led5.y < rect.topY - rect.h * 0.25;
+    if (!led5Ok) continue;
+
+    const score = rect.score;
+    if (!best || score > best.score) {
+      best = {
+        score,
+        ratio: rect.ratio,
+        sym: rect.sym,
+        rect,
+        led5,
+      };
+    }
+  }
+
+  if (best) {
+    debugRect = best.rect.ordered.map((p) => ({
+      x: viewRect.x + p.x * (viewRect.w / nmsWidth),
+      y: viewRect.y + p.y * (viewRect.h / nmsHeight),
+    }));
+    debugLed5 = {
+      x: viewRect.x + best.led5.x * (viewRect.w / nmsWidth),
+      y: viewRect.y + best.led5.y * (viewRect.h / nmsHeight),
+    };
+    rectEl.textContent = `Rect: ${best.score.toFixed(2)} w/h=${best.ratio.toFixed(2)}`;
+  }
+  return best;
+}
+
 function scoreRectangle(pts) {
   if (pts.length !== 4) return null;
   const center = meanPoint(pts);
@@ -619,7 +661,11 @@ function scoreRectangle(pts) {
   const ratioErr = Math.abs(Math.log(ratio / target));
   const score = Math.max(0, 1.0 - ratioErr * 1.5);
   if (score < 0.05) return null;
-  return { center, ordered, score, ratio };
+  const leftMid = { x: (ordered[3].x + ordered[2].x) * 0.5, y: (ordered[3].y + ordered[2].y) * 0.5 };
+  const rightMid = { x: (ordered[0].x + ordered[1].x) * 0.5, y: (ordered[0].y + ordered[1].y) * 0.5 };
+  const sym = 1.0 - Math.min(1.0, Math.abs((center.x - leftMid.x) - (rightMid.x - center.x)) / (w * 0.5));
+  const topY = Math.min(ordered[0].y, ordered[1].y, ordered[2].y, ordered[3].y);
+  return { center, ordered, score: score * sym, ratio, sym, topY, h };
 }
 
 function pickLed5(points, center) {
