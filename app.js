@@ -501,7 +501,7 @@ function drawDebugSelection() {
 function drawRoiCircle() {
   const radius = overlay.width * 0.25;
   const cx = overlay.width / 2;
-  const cy = overlay.height * 0.25;
+  const cy = overlay.height * 0.5;
   overlayCtx.save();
   overlayCtx.strokeStyle = 'rgba(0, 200, 255, 0.7)';
   overlayCtx.lineWidth = 2;
@@ -1418,7 +1418,7 @@ function filterCircle(points) {
   const sx = viewRect.w / nmsWidth;
   const sy = viewRect.h / nmsHeight;
   const cx = (overlay.width * 0.5 - viewRect.x) / sx;
-  const cy = (overlay.height * 0.25 - viewRect.y) / sy;
+  const cy = (overlay.height * 0.5 - viewRect.y) / sy;
   const r = (overlay.width * 0.25) / sx;
   const r2 = r * r;
   return points.filter((p) => {
