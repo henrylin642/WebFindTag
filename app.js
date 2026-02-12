@@ -45,6 +45,7 @@ let expCompCaps = { min: -2, max: 2 };
 let lastLock = false;
 let lastBeepTime = 0;
 let filteredPose = null;
+let trackedPoints = null;
 let viewRect = { x: 0, y: 0, w: 0, h: 0 };
 let prevPoints = [];
 let cropRect = { sx: 0, sy: 0, sw: 0, sh: 0 };
@@ -52,7 +53,8 @@ let debugRect = null;
 let debugLed5 = null;
 
 const kalmanConfig = {
-  alpha: 0.35,
+  alpha: 0.15,
+  zAlpha: 0.08,
 };
 
 const cvReady = new Promise((resolve) => {
@@ -539,7 +541,15 @@ async function estimatePose(points) {
   rectEl.textContent = `Rect: ${bestStruct.score.toFixed(2)} w/h=${bestStruct.ratio.toFixed(2)}`;
   updateLock(bestStruct.score >= 0.55);
 
-  const pose = solvePnPBest(bestStruct.rect.ordered, bestStruct.led5);
+  const ratioOk = bestStruct.ratio > 1.30 && bestStruct.ratio < 1.50;
+  if (!ratioOk) {
+    pnpEl.textContent = 'PnP: hold (ratio)';
+    poseEl.textContent = 'Pose: -';
+    return;
+  }
+
+  const tracked = trackPoints(bestStruct);
+  const pose = solvePnPBest(tracked.rect, tracked.led5);
   if (!pose) {
     pnpEl.textContent = 'PnP: fail';
     poseEl.textContent = 'Pose: -';
@@ -878,14 +888,33 @@ function applyKalman(pose) {
     return filteredPose;
   }
   const a = kalmanConfig.alpha;
+  const az = kalmanConfig.zAlpha;
   for (let i = 0; i < 3; i++) {
     filteredPose.tvec[i] = filteredPose.tvec[i] * (1 - a) + pose.tvec[i] * a;
     filteredPose.euler[i] = filteredPose.euler[i] * (1 - a) + pose.euler[i] * a;
     if (pose.camInObj) {
-      filteredPose.camInObj[i] = filteredPose.camInObj[i] * (1 - a) + pose.camInObj[i] * a;
+      const gain = i === 2 ? az : a;
+      filteredPose.camInObj[i] = filteredPose.camInObj[i] * (1 - gain) + pose.camInObj[i] * gain;
     }
   }
   return filteredPose;
+}
+
+function trackPoints(bestStruct) {
+  const rect = bestStruct.rect.ordered.slice();
+  const led5 = bestStruct.led5;
+  if (!trackedPoints) {
+    trackedPoints = { rect, led5 };
+    return trackedPoints;
+  }
+  const smoothPoint = (p, q) => ({
+    x: p.x * 0.7 + q.x * 0.3,
+    y: p.y * 0.7 + q.y * 0.3,
+    score: p.score ?? q.score ?? 1,
+  });
+  trackedPoints.rect = trackedPoints.rect.map((p, i) => smoothPoint(p, rect[i]));
+  trackedPoints.led5 = smoothPoint(trackedPoints.led5, led5);
+  return trackedPoints;
 }
 
 function beep() {
