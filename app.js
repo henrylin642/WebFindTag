@@ -310,7 +310,7 @@ function computeNmsPoints() {
 
   const w = nmsWidth;
   const h = nmsHeight;
-  const roiH = Math.floor(h * 0.5);
+  const roiH = h;
   const blurSmall = new Float32Array(total);
   const blurLarge = new Float32Array(total);
   if (params.dogMix > 0) {
